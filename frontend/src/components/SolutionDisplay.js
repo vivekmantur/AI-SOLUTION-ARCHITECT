@@ -26,10 +26,47 @@ import NotesIcon from '@mui/icons-material/Notes';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
+
+const AZURE_ICON_BASE = "/azure_icons";
+
+const resolveAzureIcon = (cloudService) => {
+  if (!cloudService) return null;
+
+  const map = {
+  "Azure API Management": "networking/Application_Gateways.svg",
+  "Azure Functions": "compute/Function_Apps.svg",
+  "Azure Cosmos DB": "databases/Cosmos_DB.svg",
+  "Azure Service Bus": "integration/Service_Bus.svg",
+  "Azure Notification Hubs": "integration/Notification_Hubs.svg",
+  "Azure App Service": "compute/App_Service.svg",
+  "Azure Static Web Apps": "compute/Static_Web_Apps.svg",
+  "Azure Kubernetes Service": "compute/Kubernetes_Services.svg",
+  "Azure Data Lake Storage": "databases/Data_Lake_Storage.svg",
+  "Azure Synapse Analytics": "analytics/Synapse_Analytics.svg",
+  "Azure Data Factory": "analytics/Data_Factory.svg",
+  "Power BI": "analytics/Power_BI.svg",
+};
+
+
+  return map[cloudService]
+    ? `${AZURE_ICON_BASE}/${map[cloudService]}`
+    : null;
+};
+
+
+// 🔧 Convert component name to Mermaid-safe node ID
+const toNodeId = (name) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+
 const SECTIONS = {
   REQUIREMENTS: 'requirements',
   ARCHITECTURE: 'architecture',
   DIAGRAM: 'diagram',
+  CLOUD_DIAGRAM: 'cloud_diagram',
   COMPONENTS: 'components',
   NFR: 'nfr',
   TECH: 'tech',
@@ -42,6 +79,8 @@ const SECTIONS = {
 
 const SolutionDisplay = ({ solution }) => {
   const mermaidRef = useRef(null);
+   const diagramRef = useRef(null);
+  const cloudDiagramRef = useRef(null);
   const [showRawDiagram, setShowRawDiagram] = useState(false);
   const [diagramError, setDiagramError] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -80,40 +119,99 @@ const SolutionDisplay = ({ solution }) => {
         curve: 'basis',
         nodeSpacing: 50,
         rankSpacing: 50,
+        useMaxWIdth: false,
       },
     });
   }, []);
 
   useEffect(() => {
-    const renderDiagram = async () => {
-      if (solution?.mermaid_diagram && mermaidRef.current) {
-        try {
-          // Clear previous content and error
-          mermaidRef.current.innerHTML = '';
-          setDiagramError(null);
-          
-          // Create a container div with the mermaid class
-          const diagramDiv = document.createElement('div');
-          diagramDiv.className = 'mermaid';
-          diagramDiv.textContent = solution.mermaid_diagram;
-          
-          // Append to the ref container
-          mermaidRef.current.appendChild(diagramDiv);
-          
-          // Run mermaid to render the diagram
-          await mermaid.run({
-            nodes: [diagramDiv],
-          });
-        } catch (error) {
-          console.error('Error rendering mermaid diagram:', error);
-          setDiagramError(error.message);
-          mermaidRef.current.innerHTML = '';
-        }
-      }
-    };
+  const renderDiagram = async () => {
+    const targetRef =
+      activeSection === SECTIONS.CLOUD_DIAGRAM
+        ? cloudDiagramRef
+        : diagramRef;
 
-    renderDiagram();
-  }, [solution, activeSection]);
+    if (!solution?.mermaid_diagram || !targetRef.current) return;
+
+    try {
+      targetRef.current.innerHTML = '';
+      setDiagramError(null);
+
+      const { svg } = await mermaid.render(
+        "architecture-diagram",
+        solution.mermaid_diagram
+      );
+
+      targetRef.current.innerHTML = svg;
+    } catch (error) {
+      console.error("Mermaid render error:", error);
+      setDiagramError(error.message);
+      targetRef.current.innerHTML = '';
+    }
+  };
+
+  renderDiagram(); // ✅ THIS WAS MISSING
+}, [solution, activeSection]);
+
+
+useEffect(() => {
+  const svg = cloudDiagramRef.current?.querySelector("svg");
+  if (!svg || !solution?.components?.length) return;
+
+  requestAnimationFrame(() => {
+    console.log("COMPONENTS DEBUG", solution.components);
+
+    svg.style.overflow = "visible";
+    svg.querySelectorAll(".node").forEach(n => {
+      n.style.overflow = "visible";
+    });
+
+    solution.components.forEach(component => {
+      console.log("ICON CANDIDATE", component);
+
+      const iconPath = resolveAzureIcon(component.cloud_service);
+      if (!iconPath) {
+        console.warn("NO ICON MAPPED FOR", component.cloud_service);
+        return;
+      }
+
+      const node = [...svg.querySelectorAll(".node")]
+        .find(n =>
+          n.textContent
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase() === component.name.toLowerCase()
+        );
+
+      if (!node || node.querySelector("foreignObject")) return;
+
+      const bbox = node.getBBox();
+      if (!bbox || bbox.width === 0) return;
+
+      const foreign = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "foreignObject"
+      );
+
+      foreign.setAttribute("x", bbox.width / 2 - 16);
+      foreign.setAttribute("y", -36);
+      foreign.setAttribute("width", "32");
+      foreign.setAttribute("height", "32");
+
+      foreign.innerHTML = `
+        <div xmlns="http://www.w3.org/1999/xhtml"
+             style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;">
+          <img src="${iconPath}" width="32" height="32" />
+        </div>
+      `;
+
+      node.appendChild(foreign);
+    });
+  });
+}, [solution]);
+
+
+
 
   const handleCopyDiagram = () => {
     if (solution?.mermaid_diagram) {
@@ -257,12 +355,13 @@ const SolutionDisplay = ({ solution }) => {
                   maxHeight: '300px',
                 }}
               >
+                
                 {solution.mermaid_diagram}
               </Box>
             </Collapse>
             
             <Box 
-              ref={mermaidRef}
+              ref={diagramRef}
               sx={{ 
                 display: 'flex', 
                 justifyContent: 'center',
@@ -454,6 +553,37 @@ const SolutionDisplay = ({ solution }) => {
           </Typography>
         </Paper>
       )}
+      {activeSection === SECTIONS.CLOUD_DIAGRAM && (
+  <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+      <ArchitectureIcon sx={{ mr: 1 }} />
+      <Typography variant="h6">
+        ☁️ Cloud Architecture Diagram
+      </Typography>
+    </Box>
+
+    <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+      Logical architecture mapped to cloud services with visual icons.
+    </Typography>
+
+    <Box
+      ref={cloudDiagramRef}
+      sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        p: 2,
+        backgroundColor: '#ffffff',
+        borderRadius: 1,
+        overflow: 'auto',
+        '& svg': {
+          maxWidth: '100%',
+          height: 'auto',
+        },
+      }}
+    />
+  </Paper>
+)}
+
     </Box>
   );
 };
