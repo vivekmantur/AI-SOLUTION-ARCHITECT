@@ -26,10 +26,114 @@ import NotesIcon from '@mui/icons-material/Notes';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
+
+const AZURE_ICON_BASE = "/azure-icons";
+
+const normalize = (s) =>
+  s
+    ?.toLowerCase()
+    .replace(/^azure\s+/i, "")   // remove leading "Azure "
+    .replace(/\s+sql$/, " sql")  // normalize SQL suffix
+    .trim();
+
+const resolveAzureIcon = (cloudService) => {
+  if (!cloudService) return null;
+
+  const map = {
+  /* =======================
+     ANALYTICS
+  ======================= */
+  "application insights": "analytics/Application_Insights.svg",
+  "data factory": "analytics/Data_Factory.svg",
+  "databricks": "analytics/Databricks.svg",
+  "machine learning": "analytics/Machine_Learning.svg",
+  "monitor": "analytics/Monitor.svg",
+  "power bi": "analytics/Power_BI.svg",
+  "synapse analytics": "analytics/Synapse_Analytics.svg",
+  "synapse sql": "analytics/Synapse_Analytics.svg",
+
+  /* =======================
+     COMPUTE
+  ======================= */
+  "app service": "compute/App_Service.svg",
+  "container apps": "compute/Container_Apps.svg",
+  "function app": "compute/Function_Apps.svg",
+  "functions": "compute/Function_Apps.svg",
+  "kubernetes service": "compute/Kubernetes_Services.svg",
+  "aks": "compute/Kubernetes_Services.svg",
+  "static web apps": "compute/Static_Web_Apps.svg",
+
+  /* =======================
+     DATABASES / STORAGE
+  ======================= */
+  "cache for redis": "databases/Cache_For_Redis.svg",
+  "redis cache": "databases/Cache_For_Redis.svg",
+  "cosmos db": "databases/Cosmos_DB.svg",
+  "data lake": "databases/Data_Lake_Storage.svg",
+  "data lake storage": "databases/Data_Lake_Storage.svg",
+  "data lake storage gen2": "databases/Data_Lake_Storage.svg",
+  "sql database": "databases/SQL_Database.svg",
+  "azure sql": "databases/SQL_Database.svg",
+  "storage account": "databases/Storage_Accounts.svg",
+  "blob storage": "databases/Storage_Accounts.svg",
+
+  /* =======================
+     INTEGRATION
+  ======================= */
+  "api gateway": "integration/API_Management.svg",
+  "event grid": "integration/Event_Grid.svg",
+  "event hubs": "integration/Event_Hubs.svg",
+  "logic apps": "integration/Logic_Apps.svg",
+  "notification hubs": "integration/Notification_Hubs.svg",
+  "service bus": "integration/Service_Bus.svg",
+
+  /* =======================
+     NETWORKING
+  ======================= */
+  "application gateway": "networking/Application_Gateways.svg",
+  "front door": "networking/Front_Door.svg",
+  "load balancer": "networking/Load_Balancers.svg",
+  "virtual network": "networking/Virtual_Networks.svg",
+  "vnet": "networking/Virtual_Networks.svg",
+
+  /* =======================
+     SECURITY
+  ======================= */
+  "azure active directory": "security/Azure_Active_Directory.svg",
+  "azure ad": "security/Azure_Active_Directory.svg",
+  "ddos protection": "security/DDoS_Protection.svg",
+  "firewall": "security/Firewall.svg",
+  "key vault": "security/Key_Vaults.svg",
+};
+
+
+  const key = normalize(cloudService);
+  const icon = map[key];
+
+  if (!icon) {
+    console.warn("❌ No icon mapping for:", cloudService);
+    return null;
+  }
+
+  return `${AZURE_ICON_BASE}/${icon}`;
+};
+
+
+
+
+// 🔧 Convert component name to Mermaid-safe node ID
+const toNodeId = (name) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+
 const SECTIONS = {
   REQUIREMENTS: 'requirements',
   ARCHITECTURE: 'architecture',
   DIAGRAM: 'diagram',
+  CLOUD_DIAGRAM: 'cloud_diagram',
   COMPONENTS: 'components',
   NFR: 'nfr',
   TECH: 'tech',
@@ -42,6 +146,8 @@ const SECTIONS = {
 
 const SolutionDisplay = ({ solution }) => {
   const mermaidRef = useRef(null);
+   const diagramRef = useRef(null);
+  const cloudDiagramRef = useRef(null);
   const [showRawDiagram, setShowRawDiagram] = useState(false);
   const [diagramError, setDiagramError] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -78,42 +184,99 @@ const SolutionDisplay = ({ solution }) => {
       flowchart: {
         htmlLabels: true,
         curve: 'basis',
-        nodeSpacing: 50,
-        rankSpacing: 50,
+        nodeSpacing: 80,
+        rankSpacing: 80,
+        useMaxWidth: false,
       },
     });
   }, []);
 
-  useEffect(() => {
-    const renderDiagram = async () => {
-      if (solution?.mermaid_diagram && mermaidRef.current) {
-        try {
-          // Clear previous content and error
-          mermaidRef.current.innerHTML = '';
-          setDiagramError(null);
-          
-          // Create a container div with the mermaid class
-          const diagramDiv = document.createElement('div');
-          diagramDiv.className = 'mermaid';
-          diagramDiv.textContent = solution.mermaid_diagram;
-          
-          // Append to the ref container
-          mermaidRef.current.appendChild(diagramDiv);
-          
-          // Run mermaid to render the diagram
-          await mermaid.run({
-            nodes: [diagramDiv],
-          });
-        } catch (error) {
-          console.error('Error rendering mermaid diagram:', error);
-          setDiagramError(error.message);
-          mermaidRef.current.innerHTML = '';
-        }
-      }
-    };
 
-    renderDiagram();
-  }, [solution, activeSection]);
+
+
+const enrichMermaidWithIcons = (mermaidCode, components) => {
+  let enriched = mermaidCode;
+
+  for (const c of components) {
+    const iconPath = resolveAzureIcon(c.cloud_service);
+    if (!iconPath) continue;
+
+    const safeLabel = c.name.replace(/"/g, '\\"');
+
+    const htmlLabel = `
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+  <div>${safeLabel}</div>
+  <img src="${iconPath}" width="32" height="32"/>
+</div>
+`.trim();
+
+    // replace only the label text
+    const regex = new RegExp(
+      `\\["${safeLabel}"\\]`,
+      "g"
+    );
+
+    enriched = enriched.replace(
+      regex,
+      `["${htmlLabel}"]`
+    );
+  }
+
+  return enriched;
+};
+
+
+
+ useEffect(() => {
+  const renderDiagram = async () => {
+    const targetRef =
+      activeSection === SECTIONS.CLOUD_DIAGRAM
+        ? cloudDiagramRef
+        : diagramRef;
+
+    if (!solution?.mermaid_diagram || !targetRef.current) return;
+
+    try {
+      targetRef.current.innerHTML = '';
+      setDiagramError(null);
+
+      const renderId = `architecture-${activeSection}-${Date.now()}`;
+      const diagramSource =
+        activeSection === SECTIONS.CLOUD_DIAGRAM
+          ? enrichMermaidWithIcons(
+              solution.mermaid_diagram,
+              solution.components || []
+            )
+          : solution.mermaid_diagram;
+
+      const { svg } = await mermaid.render(renderId, diagramSource);
+
+      targetRef.current.innerHTML = svg;
+
+
+      // 2️⃣ ONLY AFTER SVG EXISTS → inject icons
+      if (activeSection === SECTIONS.CLOUD_DIAGRAM) {
+        const renderedSvg = targetRef.current.querySelector("svg");
+        console.log("SVG AFTER RENDER?", !!renderedSvg);
+
+       
+
+      }
+
+    } catch (error) {
+      console.error("Mermaid render error:", error);
+      setDiagramError(error.message);
+      targetRef.current.innerHTML = '';
+    }
+  };
+
+  renderDiagram();
+}, [solution, activeSection]);
+
+
+
+
+
 
   const handleCopyDiagram = () => {
     if (solution?.mermaid_diagram) {
@@ -257,12 +420,13 @@ const SolutionDisplay = ({ solution }) => {
                   maxHeight: '300px',
                 }}
               >
+                
                 {solution.mermaid_diagram}
               </Box>
             </Collapse>
             
             <Box 
-              ref={mermaidRef}
+              ref={diagramRef}
               sx={{ 
                 display: 'flex', 
                 justifyContent: 'center',
@@ -454,6 +618,44 @@ const SolutionDisplay = ({ solution }) => {
           </Typography>
         </Paper>
       )}
+      {activeSection === SECTIONS.CLOUD_DIAGRAM && (
+  <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+      <ArchitectureIcon sx={{ mr: 1 }} />
+      <Typography variant="h6">
+        ☁️ Cloud Architecture Diagram
+      </Typography>
+    </Box>
+
+    <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+      Logical architecture mapped to cloud services with visual icons.
+    </Typography>
+
+    <Box
+  ref={cloudDiagramRef}
+  sx={{
+    display: 'flex',
+    justifyContent: 'center',
+    p: 2,
+    backgroundColor: '#ffffff',
+    borderRadius: 1,
+    overflow: 'visible',
+    '& svg': {
+      overflow: 'visible',
+    },
+    '& .node': {
+      overflow: 'visible',
+    },
+    '& .node > rect': {
+      overflow: 'visible',
+    },
+  }}
+/>
+
+
+  </Paper>
+)}
+
     </Box>
   );
 };

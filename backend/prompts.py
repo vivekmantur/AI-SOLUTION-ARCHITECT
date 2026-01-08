@@ -9,8 +9,11 @@ def build_design_prompt(
 ) -> str:
     """
     Domain-agnostic, cloud-aware architecture prompt.
-    Enforces full output up to section 9 and guarantees
-    a non-empty, connected Mermaid diagram.
+    Enforces:
+    - Non-empty components
+    - Non-empty connected Mermaid diagram
+    - Explicit cloud_service field (never missing)
+    - Pattern authority when selected
     """
 
     # -------------------------------------------------------
@@ -24,20 +27,20 @@ def build_design_prompt(
         )
 
     # -------------------------------------------------------
-    # STRICT JSON SCHEMA
+    # STRICT JSON SCHEMA (DO NOT DEVIATE)
     # -------------------------------------------------------
     json_schema_hint = """
 {
   "normalized_requirements": {},
-  "chosen_pattern": "string or null",
+  "chosen_pattern": "string",
   "architecture_description": "string",
   "mermaid_diagram": "string",
   "components": [
     {
       "name": "string",
       "type": "frontend | api_gateway | backend | auth | messaging | analytics | monitoring | db | storage | caching",
-      "cloud_service": "string or null",
-      "description": "string or null"
+      "cloud_service": "string",
+      "description": "string"
     }
   ],
   "non_functional_considerations": ["string"],
@@ -53,7 +56,7 @@ def build_design_prompt(
   },
   "api_spec_stub": "string",
   "infra_as_code_stub": "string",
-  "notes": "string or null"
+  "notes": "string"
 }
 """
 
@@ -71,7 +74,7 @@ The user has provided the following requirements:
 
 
 The following architecture patterns may be used as **optional references only**.
-They must NEVER override the user's requirements.
+They must NEVER override the user's requirements unless explicitly selected.
 
 {patterns_snippet}
 
@@ -101,177 +104,269 @@ Store this under `normalized_requirements`.
 TASK 2 — INFER DOMAIN CAPABILITIES (NO HARDCODING)
 ====================================================================
 
-- Infer system capabilities ONLY from the requirements
-- Do NOT assume a predefined domain
-- Capabilities must come from user intent
-- Examples (not exhaustive):
-  - browsing
-  - cart management
-  - ordering
-  - payments
-  - real-time messaging
-  - ingestion
-  - analytics
-  - authentication
-  - storage
+Infer system capabilities ONLY from the requirements.
+Do NOT assume a predefined domain.
+
+Capabilities must be expressed as concrete responsibilities.
+
+Examples (not exhaustive):
+- browsing
+- order_processing
+- payment_processing
+- fraud_detection
+- audit_logging
+- streaming_ingestion
+- analytics
+- authentication
+- storage
 
 ====================================================================
-TASK 3 — CHOOSE PATTERN (OPTIONAL)
+TASK 3 — CHOOSE PATTERN (STRICT & AUTHORITATIVE)
 ====================================================================
 
-- Select a pattern ONLY if it clearly fits
-- Otherwise set `"chosen_pattern": null`
-- Justify briefly in `notes`
+Select a pattern if it clearly fits.
+
+STRICT OVERRIDE RULE:
+When a pattern is selected:
+- You MUST NOT invent alternative architectures
+- You MUST NOT remove or rename Mandatory Components
+- You MUST follow DIAGRAM_HINTS EXACTLY
+
+When selected:
+- `chosen_pattern` MUST be the pattern name
+- ALL Mandatory Components MUST appear
+- ALL Required Connections MUST appear
+
+If no pattern fits:
+- Set `"chosen_pattern": null`
+
+IMPORTANT:
+Even if `chosen_pattern` is null, architecture generation MUST continue.
 
 ====================================================================
-CRITICAL TWO-PHASE ARCHITECTURE RULE (MANDATORY)
+MANDATORY ARCHITECTURE GENERATION RULE
+====================================================================
+
+Even when `"chosen_pattern": null`:
+
+- You MUST define components
+- You MUST generate a connected mermaid_diagram
+- You MUST satisfy all user requirements
+
+Null pattern does NOT mean no architecture.
+
+====================================================================
+CRITICAL TWO-PHASE ARCHITECTURE RULE
 ====================================================================
 
 ----------------------------
 PHASE 1 — COMPONENT FINALIZATION
 ----------------------------
 
-- Finalize ALL components FIRST
-- `components` is the SINGLE source of truth
-- Each component MUST:
-  - Have exactly ONE responsibility
-  - Use ONE allowed type:
-    frontend | api_gateway | backend | auth | messaging |
-    analytics | monitoring | db | storage | caching
+Finalize ALL components FIRST.
 
-- Do NOT merge responsibilities
-- If the system is real-time or event-driven → messaging is REQUIRED
-- If users or APIs exist → authentication is REQUIRED
-- Backend services MUST NOT be isolated
+If a pattern is selected:
+- Start by adding ALL Mandatory Components from the pattern
+- Then add any additional components required by user requirements
 
-----------------------------
-PHASE 2 — CONNECTION FINALIZATION (MANDATORY)
-----------------------------
-
-Before drawing the diagram, you MUST mentally finalize ALL connections.
 
 Rules:
-- Every component MUST appear in at least one connection
-- No standalone components are allowed
-- Frontend → API Gateway or Backend
-- API Gateway → at least one Backend
-- Backend → Backend OR Database OR Storage OR Messaging
-- Messaging → at least one producer AND one consumer
-- Database / Storage / Cache → at least one Backend
+- `components` is the SINGLE source of truth
+- Each component has exactly ONE responsibility
+- Use ONLY allowed types
 
-If any component is unconnected, the architecture is INVALID.
+Allowed component types:
+- frontend
+- api_gateway
+- backend
+- auth
+- messaging
+- analytics
+- monitoring
+- db
+- storage
+- caching
+
+MANDATORY COMPONENT FIELD RULE:
+Every component object MUST include:
+- name
+- type
+- cloud_service
+- description
+
+If unknown → explicitly set to an empty string "".
+Null values are NOT allowed anywhere in the output.
+
+MANDATORY API GATEWAY RULE:
+If a selected pattern includes an API Gateway → it MUST exist.
+
+STRICT RULES:
+- No placeholder services
+- No merged responsibilities
+- If async/event-driven → messaging REQUIRED
+- If APIs/users exist → authentication REQUIRED
+
+----------------------------
+PHASE 2 — CONNECTION FINALIZATION
+----------------------------
+
+Every component MUST appear in at least one connection.
+
+Connection semantics:
+- Frontend → API Gateway / Backend
+- API Gateway → Backend
+- Backend → Database / Storage
+- Backend → Messaging
+- Messaging → Backend
+- Monitoring / Audit consume events asynchronously
+
+No isolated components allowed.
 
 ====================================================================
-CRITICAL FAILURE CONDITION (NON-NEGOTIABLE)
+CRITICAL FAILURE CONDITION
 ====================================================================
 
-The `mermaid_diagram` field MUST contain a COMPLETE diagram.
+`mermaid_diagram` MUST be non-empty and connected.
 
-If `mermaid_diagram` is:
-- an empty string
+Invalid if:
+- empty
 - missing
-- or contains only `graph TD` with no edges
+- only `graph TD`
 
-THEN THE OUTPUT IS INVALID AND MUST BE REGENERATED.
+====================================================================
+MANDATORY PATTERN COMPONENT INJECTION RULE (CRITICAL)
+====================================================================
 
-INVALID EXAMPLE (DO NOT DO THIS):
-graph TD
-A[Web Frontend]
+If `chosen_pattern` is NOT null:
 
-VALID MINIMUM EXAMPLE:
-graph TD
-A[Web Frontend] --> B[API Gateway]
+- You MUST extract ALL "Mandatory Components" from the selected pattern
+- You MUST insert EVERY Mandatory Component into the main `components` list
+- These components are NOT optional
+- They MUST NOT be renamed, merged, or omitted
+- They MUST obey the same component rules as all others:
+  - exactly one responsibility
+  - valid component type
+  - cloud_service assigned (or null)
+  - description provided
+
+Pattern Mandatory Components MUST:
+- appear in `components`
+- appear in `mermaid_diagram`
+- participate in at least one connection
+
+FAILURE TO INCLUDE ANY mandatory pattern component is INVALID OUTPUT.
+
 
 ====================================================================
 TASK 4 — ARCHITECTURE DESCRIPTION
 ====================================================================
 
-Write a concise architecture overview explaining:
+Explain:
 - Architecture style
 - Responsibility separation
-- Scalability and availability
-- Sync vs async interactions
+- Scalability & availability
+- Sync vs async flows
+- Consistency strategy
 
 ====================================================================
 TASK 5 — MERMAID DIAGRAM (MANDATORY)
 ====================================================================
 
-Generate a valid Mermaid diagram:
-
+Rules:
 - Use `graph TD`
 - Allowed arrows ONLY:
   A --> B
   A -->|label| B
   A -.-> B
   A -.->|label| B
-- No markdown fences
-- No actors like User / Client
-- No generic nodes
 
-RULES:
-- EVERY component MUST appear
-- EVERY component MUST be connected
-- Names MUST match components EXACTLY
-- Diagrams with isolated nodes are INVALID
+STRICT PROHIBITIONS:
+- NO `->>`
+- NO external actors (User, Client)
+- NO undeclared nodes
+- Node names MUST match `components`
+
+If a pattern is selected:
+- The diagram MUST include ALL Mandatory Components from the pattern
+- Missing even one mandatory component is INVALID
+
 
 ====================================================================
 TASK 6 — NON-FUNCTIONAL CONSIDERATIONS
 ====================================================================
 
-List NFRs such as:
+List NFRs:
 - scalability
 - availability
 - latency
 - security
 - observability
-- fault tolerance
+- compliance
 
 ====================================================================
 TASK 7 — TECH STACK
 ====================================================================
 
-Propose a realistic tech stack:
-- languages
-- frameworks
-- messaging
-- databases
-- infrastructure tools
+Propose realistic stack aligned with architecture.
 
 ====================================================================
 TASK 8 — COST ESTIMATE
 ====================================================================
 
-Provide a rough monthly estimate:
+Provide:
 - total
 - dev / uat / prod
-- assumptions in notes
+- assumptions
 
 ====================================================================
 TASK 9 — API & INFRASTRUCTURE STUBS
 ====================================================================
 
-- Provide 2–3 API endpoints
-- Provide an IaC stub (Terraform / Bicep / CloudFormation)
+Provide:
+- api_spec_stub (string)
+- infra_as_code_stub (string)
+
+IMPORTANT:
+- The field name MUST be exactly "infra_as_code_stub"
+- DO NOT invent alternative field names
+- DO NOT add suffixes like "_terraform" or "_bicep"
 
 ====================================================================
-CLOUD AWARENESS RULE
+CLOUD AWARENESS & SERVICE SELECTION
 ====================================================================
 
-- If `cloud_service` is set:
-  - It MUST be valid for **{req.cloud.upper()}**
-  - It MUST match the component type
-- If unsure, set it to null
+For EVERY component, `cloud_service` MUST be present.
+
+The value MAY be:
+- a valid managed cloud service for **{req.cloud.upper()}**
+- OR null
+
+If assigned:
+- MUST match component type
+- MUST be a real managed service
+- MUST belong to selected cloud
+
+DO NOT:
+- Invent services
+- Mix clouds
+- Assign infra tools (Docker, Terraform)
+- Assign SaaS products (Stripe, Snowflake)
 
 ====================================================================
-ABSOLUTE OUTPUT RULES (NON-NEGOTIABLE)
+ABSOLUTE OUTPUT RULES
 ====================================================================
 
 - Output MUST be valid JSON
-- Output MUST start with '{{' and end with '}}'
-- Do NOT include markdown
-- Do NOT include explanations
-- JSON MUST conform EXACTLY to this schema:
+- MUST start with '{{' and end with '}}'
+- NO markdown
+- NO explanations
+- MUST conform EXACTLY to this schema:
 
+GLOBAL CONSTRAINT:
+- The value null is NOT allowed anywhere in the JSON.
+- If information is unknown or not applicable, use "" (empty string).
+
+Follow the json schema strictly
 {json_schema_hint}
 
 Return ONLY the JSON object.
