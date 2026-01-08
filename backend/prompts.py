@@ -32,15 +32,15 @@ def build_design_prompt(
     json_schema_hint = """
 {
   "normalized_requirements": {},
-  "chosen_pattern": "string or null",
+  "chosen_pattern": "string",
   "architecture_description": "string",
   "mermaid_diagram": "string",
   "components": [
     {
       "name": "string",
       "type": "frontend | api_gateway | backend | auth | messaging | analytics | monitoring | db | storage | caching",
-      "cloud_service": "string or null",
-      "description": "string or null"
+      "cloud_service": "string",
+      "description": "string"
     }
   ],
   "non_functional_considerations": ["string"],
@@ -56,7 +56,7 @@ def build_design_prompt(
   },
   "api_spec_stub": "string",
   "infra_as_code_stub": "string",
-  "notes": "string or null"
+  "notes": "string"
 }
 """
 
@@ -165,6 +165,11 @@ PHASE 1 — COMPONENT FINALIZATION
 
 Finalize ALL components FIRST.
 
+If a pattern is selected:
+- Start by adding ALL Mandatory Components from the pattern
+- Then add any additional components required by user requirements
+
+
 Rules:
 - `components` is the SINGLE source of truth
 - Each component has exactly ONE responsibility
@@ -189,7 +194,8 @@ Every component object MUST include:
 - cloud_service
 - description
 
-If unknown → explicitly set to null.
+If unknown → explicitly set to an empty string "".
+Null values are NOT allowed anywhere in the output.
 
 MANDATORY API GATEWAY RULE:
 If a selected pattern includes an API Gateway → it MUST exist.
@@ -228,6 +234,30 @@ Invalid if:
 - only `graph TD`
 
 ====================================================================
+MANDATORY PATTERN COMPONENT INJECTION RULE (CRITICAL)
+====================================================================
+
+If `chosen_pattern` is NOT null:
+
+- You MUST extract ALL "Mandatory Components" from the selected pattern
+- You MUST insert EVERY Mandatory Component into the main `components` list
+- These components are NOT optional
+- They MUST NOT be renamed, merged, or omitted
+- They MUST obey the same component rules as all others:
+  - exactly one responsibility
+  - valid component type
+  - cloud_service assigned (or null)
+  - description provided
+
+Pattern Mandatory Components MUST:
+- appear in `components`
+- appear in `mermaid_diagram`
+- participate in at least one connection
+
+FAILURE TO INCLUDE ANY mandatory pattern component is INVALID OUTPUT.
+
+
+====================================================================
 TASK 4 — ARCHITECTURE DESCRIPTION
 ====================================================================
 
@@ -255,6 +285,11 @@ STRICT PROHIBITIONS:
 - NO external actors (User, Client)
 - NO undeclared nodes
 - Node names MUST match `components`
+
+If a pattern is selected:
+- The diagram MUST include ALL Mandatory Components from the pattern
+- Missing even one mandatory component is INVALID
+
 
 ====================================================================
 TASK 6 — NON-FUNCTIONAL CONSIDERATIONS
@@ -288,8 +323,13 @@ TASK 9 — API & INFRASTRUCTURE STUBS
 ====================================================================
 
 Provide:
-- 2–3 API endpoints
-- IaC stub (Terraform / Bicep / CloudFormation)
+- api_spec_stub (string)
+- infra_as_code_stub (string)
+
+IMPORTANT:
+- The field name MUST be exactly "infra_as_code_stub"
+- DO NOT invent alternative field names
+- DO NOT add suffixes like "_terraform" or "_bicep"
 
 ====================================================================
 CLOUD AWARENESS & SERVICE SELECTION
@@ -322,6 +362,11 @@ ABSOLUTE OUTPUT RULES
 - NO explanations
 - MUST conform EXACTLY to this schema:
 
+GLOBAL CONSTRAINT:
+- The value null is NOT allowed anywhere in the JSON.
+- If information is unknown or not applicable, use "" (empty string).
+
+Follow the json schema strictly
 {json_schema_hint}
 
 Return ONLY the JSON object.

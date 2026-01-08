@@ -53,6 +53,9 @@ Strong consistency for warehouse queries.
 ### Security
 - Row-level security
 - Data encryption
+- Data Accuracy
+- Cost Optimization
+    
 
 ### Performance
 - Optimized query execution

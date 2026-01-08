@@ -36,25 +36,22 @@ from .report_generator import generate_pdf_report
 # Azure Icon Mapping
 # ------------------------------------------------------------
 AZURE_ICON_MAP = {
-    "Azure App Service": "compute/App_Service.svg",
-    "Azure Functions": "compute/Function_Apps.svg",
-    "Azure Stream Analytics": "analytics/Synapse_Analytics.svg",
-    "Azure Time Series Insights": "analytics/Time_Series_Insights.svg",
+    "Azure App Service": "compute/App_Service.png",
+    "Azure Functions": "compute/Function_Apps.png",
+    "Azure Kubernetes Service": "compute/Kubernetes_Services.png",
+    "Azure Static Web Apps": "compute/Static_Web_Apps.png",
 
-    "Azure Kubernetes Service": "compute/Kubernetes_Services.svg",
-    "Azure Static Web Apps": "compute/Static_Web_Apps.svg",
+    "Azure Cosmos DB": "databases/Cosmos_DB.png",
+    "Azure SQL Database": "databases/SQL_Database.png",
+    "Azure Cache for Redis": "databases/Cache_For_Redis.png",
 
-    "Azure Cosmos DB": "databases/Cosmos_DB.svg",
-    "Azure SQL Database": "databases/SQL_Database.svg",
-    "Azure Cache for Redis": "databases/Cache_For_Redis.svg",
+    "Azure Data Factory": "analytics/Data_Factory.png",
+    "Azure Synapse Analytics": "analytics/Synapse_Analytics.png",
+    "Azure Databricks": "analytics/Databricks.png",
+    "Power BI": "analytics/Power_BI.png",
 
-    "Azure IoT Hub": "integration/IoT_Hub.svg",
-    "Azure Event Hubs": "integration/Event_Hubs.svg",
-    "Azure Service Bus": "integration/Service_Bus.svg",
-
-    "Application Insights": "analytics/Application_Insights.svg",
-    "Azure Monitor": "analytics/Monitor.svg",
-    "Power BI": "analytics/Power_BI.svg",
+    "Application Insights": "analytics/Application_Insights.png",
+    "Azure Monitor": "analytics/Monitor.png",
 }
 
 
@@ -74,16 +71,21 @@ app.add_middleware(
 # ------------------------------------------------------------
 # Azure Icons (SVG)
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+# Azure Icons (SVG)
+# ------------------------------------------------------------
 AZURE_ICONS_DIR = (
-    Path(__file__).parent.parent / "frontend" / "public" / "azure-icons"
+    Path(__file__).parent.parent / "frontend" / "build" / "azure-icons"
 )
 
-if AZURE_ICONS_DIR.exists():
-    app.mount(
-        "/azure-icons",
-        StaticFiles(directory=str(AZURE_ICONS_DIR)),
-        name="azure-icons",
-    )
+print("AZURE ICON DIR:", AZURE_ICONS_DIR)
+print("EXISTS?", AZURE_ICONS_DIR.exists())
+
+app.mount(
+    "/azure-icons",
+    StaticFiles(directory=str(AZURE_ICONS_DIR)),
+    name="azure-icons",
+)
 
 # ------------------------------------------------------------
 # Frontend build
@@ -96,6 +98,34 @@ if FRONTEND_BUILD_DIR.exists():
         StaticFiles(directory=str(FRONTEND_BUILD_DIR / "static")),
         name="static",
     )
+    
+    
+    
+def normalize_solution_output(solution_json: dict) -> dict:
+    # Normalize infra_as_code field
+    if "infra_as_code_stub" not in solution_json:
+        for key in list(solution_json.keys()):
+            if key.startswith("infra_as_code"):
+                solution_json["infra_as_code_stub"] = solution_json.pop(key)
+                break
+        else:
+            solution_json["infra_as_code_stub"] = ""
+
+    # Normalize api_spec_stub
+    if "api_spec_stub" not in solution_json:
+        solution_json["api_spec_stub"] = ""
+
+    # Normalize notes
+    if "notes" not in solution_json or solution_json["notes"] is None:
+        solution_json["notes"] = ""
+
+    # Normalize cost notes
+    if "cost_estimate" in solution_json:
+        if solution_json["cost_estimate"].get("notes") is None:
+            solution_json["cost_estimate"]["notes"] = ""
+
+    return solution_json
+
 
 # ------------------------------------------------------------
 # API
@@ -104,26 +134,33 @@ if FRONTEND_BUILD_DIR.exists():
 def generate_design(req: DesignRequest):
     try:
         patterns = pattern_store.query(req.requirements, top_k=1) or []
-        print("pattern patterns\n",patterns)
+        print("patterns\n",patterns)
         prompt = build_design_prompt(req, patterns)
+        
+
         raw = call_llm(prompt)
-        print("raw from llm\n",raw)
+        print("raw output came from llm : \n",raw)
         solution_json = json.loads(raw)
+
+        # 🔒 REQUIRED normalization
+        solution_json = normalize_solution_output(solution_json)
 
         components = [
             ArchitectureComponent(**c)
             for c in solution_json.get("components", [])
         ]
-        diagram=solution_json.get("mermaid_diagram","")
-        diagram = normalize_mermaid(diagram,components)
-        print("sanitized diagram",diagram)
+
+        diagram = normalize_mermaid(
+            solution_json.get("mermaid_diagram", ""),
+            components
+        )
 
         cost = solution_json.get("cost_estimate", {})
         per_env = [EnvironmentCost(**e) for e in cost.get("per_environment", [])]
 
         solution = SolutionDesign(
             normalized_requirements=solution_json.get("normalized_requirements", {}),
-            chosen_pattern=solution_json.get("chosen_pattern"),
+            chosen_pattern=solution_json.get("chosen_pattern", ""),
             architecture_description=solution_json.get("architecture_description", ""),
             mermaid_diagram=diagram,
             components=components,
@@ -132,11 +169,11 @@ def generate_design(req: DesignRequest):
             cost_estimate=CostEstimate(
                 total_monthly_usd=cost.get("total_monthly_usd", 0),
                 per_environment=per_env,
-                notes=cost.get("notes")
+                notes=cost.get("notes", "")
             ),
-            api_spec_stub=solution_json.get("api_spec_stub"),
-            infra_as_code_stub=solution_json.get("infra_as_code_stub"),
-            notes=solution_json.get("notes"),
+            api_spec_stub=solution_json.get("api_spec_stub", ""),
+            infra_as_code_stub=solution_json.get("infra_as_code_stub", ""),
+            notes=solution_json.get("notes", "")
         )
 
         return DesignResponse(request=req, solution=solution)
@@ -147,5 +184,11 @@ def generate_design(req: DesignRequest):
 
 @app.get("/{full_path:path}")
 def serve_react_app(full_path: str):
+    # Do NOT intercept static or API routes
+    if full_path.startswith(("azure-icons", "static", "design")):
+        raise HTTPException(status_code=404)
+
     index = FRONTEND_BUILD_DIR / "index.html"
-    return FileResponse(index) if index.exists() else {"message": "Frontend not built"}
+    return FileResponse(index)
+
+

@@ -120,9 +120,54 @@ def normalize_mermaid(
 
 
     # --------------------------------------------------
-    # 9. Emit FINAL diagram
+    # 9. FINAL authoritative sanitize (PIPELINE REBUILD)
     # --------------------------------------------------
-    result = ["graph TD"]
-    result.extend(clean_edges)
+    if components:
+        # Preferred logical order for analytics platforms
+        preferred_order = [
+            "Data Ingestion Service",
+            "ETL Pipeline",
+            "Data Lake",
+            "Data Warehouse",
+            "BI Dashboard Service",
+            "Reporting",
+        ]
 
-    return "\n".join(result)
+        def node_id(name: str) -> str:
+            return (
+                name.lower()
+                .replace(" ", "_")
+                .replace("-", "_")
+                .replace("/", "_")
+            )
+
+        component_names = [c.name for c in components]
+
+        # Keep only components that actually exist
+        ordered = [n for n in preferred_order if n in component_names]
+
+        # Fallback: preserve component order if heuristic fails
+        if not ordered:
+            ordered = component_names
+
+        lines = ["flowchart LR", ""]
+
+        # Emit nodes
+        for name in ordered:
+            lines.append(f'{node_id(name)}["{name}"]')
+
+        lines.append("")
+
+        # Emit edges (linear pipeline)
+        for i in range(len(ordered) - 1):
+            lines.append(
+                f"{node_id(ordered[i])} --> {node_id(ordered[i + 1])}"
+            )
+
+        return "\n".join(lines)
+
+    # --------------------------------------------------
+    # 10. Fallback (no components)
+    # --------------------------------------------------
+    return diagram
+
