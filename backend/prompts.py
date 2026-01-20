@@ -52,7 +52,7 @@ def build_design_prompt(
       { "environment": "uat", "monthly_usd": 0 },
       { "environment": "prod", "monthly_usd": 0 }
     ],
-    "notes": "string or null"
+    "notes": "string"
   },
   "api_spec_stub": "string",
   "infra_as_code_stub": "string",
@@ -138,7 +138,8 @@ When selected:
 - ALL Required Connections MUST appear
 
 If no pattern fits:
-- Set `"chosen_pattern": null`
+- Set "chosen_pattern": ""
+
 
 IMPORTANT:
 Even if `chosen_pattern` is null, architecture generation MUST continue.
@@ -357,7 +358,6 @@ ABSOLUTE OUTPUT RULES
 ====================================================================
 
 - Output MUST be valid JSON
-- MUST start with '{{' and end with '}}'
 - NO markdown
 - NO explanations
 - MUST conform EXACTLY to this schema:
@@ -369,7 +369,11 @@ GLOBAL CONSTRAINT:
 Follow the json schema strictly
 {json_schema_hint}
 
-Return ONLY the JSON object.
+
+Return ONLY a valid JSON object.
+Do not include markdown, headings, bullet points, tables, or explanations.
+Output must start with '{' and end with '}'.
+
 """
 
     return textwrap.dedent(prompt)

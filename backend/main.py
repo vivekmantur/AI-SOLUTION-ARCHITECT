@@ -28,7 +28,9 @@ from .mermaid_sanitizer import (
 
 from .patterns_store import pattern_store
 from .prompts import build_design_prompt
+from .json_schema_prompt import build_json_prompt
 from .llm_client import call_llm
+from .llama_client import call_llama
 from .report_generator import generate_pdf_report
 
 
@@ -138,9 +140,31 @@ def generate_design(req: DesignRequest):
         prompt = build_design_prompt(req, patterns)
         
 
-        raw = call_llm(prompt)
-        print("raw output came from llm : \n",raw)
-        solution_json = json.loads(raw)
+        raw_olmo = call_llm(prompt).strip()
+        print("RAW came from OLMo3\n", raw_olmo)
+
+        if not raw_olmo:
+            raise HTTPException(status_code=500, detail="OLMo3 returned empty output")
+
+        # ✅ STEP 2: Build schema prompt for Llama3 using RAW OLMo output
+        schema_prompt = build_json_prompt(req, patterns, raw_olmo)
+
+        # ✅ STEP 3: Call Llama3 to convert RAW -> STRICT JSON
+        raw_llama = call_llama(schema_prompt).strip()
+        print("RAW came from Llama3 (JSON)\n", raw_llama)
+
+        if not raw_llama:
+            raise HTTPException(status_code=500, detail="Llama3 returned empty output")
+
+        if not raw_llama.startswith("{"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Llama3 output not JSON. First 200 chars: {raw_llama[:200]}"
+            )
+
+        # ✅ STEP 4: Convert JSON string -> dict
+        solution_json = json.loads(raw_llama)
+
 
         # 🔒 REQUIRED normalization
         solution_json = normalize_solution_output(solution_json)
