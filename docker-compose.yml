@@ -1,4 +1,5 @@
 name: ai-architect
+
 services:
   ai-solution-architect:
     build:
@@ -7,9 +8,14 @@ services:
     container_name: ai-solution-architect
     ports:
       - "8602:8602"
+
+    env_file:
+      - .env
+
     environment:
-      - PYTHONUNBUFFERED=1
-      - REACT_APP_API_URL=
+      PYTHONUNBUFFERED: "1"
+      REACT_APP_API_URL: ""
+
     volumes:
       # Mount patterns directory for easy updates without rebuild
       - ./patterns:/app/patterns:ro

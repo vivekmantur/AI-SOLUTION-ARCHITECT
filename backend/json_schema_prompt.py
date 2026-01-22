@@ -90,6 +90,10 @@ CRITICAL RULES:
 9) Component type MUST be one of:
    frontend, api_gateway, backend, auth, messaging, analytics, monitoring, db, storage, caching
    If RAW uses "service", convert it to "backend".
+10) api_spec_stub MUST be a STRING (not object). 
+    Example: "GET /health\\nPOST /ingest\\nGET /reports"
+11) infra_as_code_stub MUST be a STRING (not object).
+
 
 STRICT OUTPUT:
 - Output MUST be valid JSON only

@@ -22,6 +22,11 @@ from .models import (
     EnvironmentCost,
 )
 
+from .Text_Json_Extraction import (
+    _strip_log_prefix,
+    parse_money_to_number,
+    parse_olmo_output_to_json,
+)
 from .mermaid_sanitizer import (
     normalize_mermaid,
 )
@@ -30,7 +35,6 @@ from .patterns_store import pattern_store
 from .prompts import build_design_prompt
 from .json_schema_prompt import build_json_prompt
 from .llm_client import call_llm
-from .llama_client import call_llama
 from .report_generator import generate_pdf_report
 
 
@@ -88,6 +92,39 @@ app.mount(
     StaticFiles(directory=str(AZURE_ICONS_DIR)),
     name="azure-icons",
 )
+# ------------------------------------------------------------
+# AWS Icons
+# ------------------------------------------------------------
+AWS_ICONS_DIR = (
+    Path(__file__).parent.parent / "frontend" / "build" / "aws-icons"
+)
+
+print("AWS ICON DIR:", AWS_ICONS_DIR)
+print("EXISTS?", AWS_ICONS_DIR.exists())
+
+if AWS_ICONS_DIR.exists():
+    app.mount(
+        "/aws-icons",
+        StaticFiles(directory=str(AWS_ICONS_DIR)),
+        name="aws-icons",
+    )
+
+# ------------------------------------------------------------
+# GCP Icons
+# ------------------------------------------------------------
+GCP_ICONS_DIR = (
+    Path(__file__).parent.parent / "frontend" / "build" / "gcp-icons"
+)
+
+print("GCP ICON DIR:", GCP_ICONS_DIR)
+print("EXISTS?", GCP_ICONS_DIR.exists())
+
+if GCP_ICONS_DIR.exists():
+    app.mount(
+        "/gcp-icons",
+        StaticFiles(directory=str(GCP_ICONS_DIR)),
+        name="gcp-icons",
+    )
 
 # ------------------------------------------------------------
 # Frontend build
@@ -117,6 +154,14 @@ def normalize_solution_output(solution_json: dict) -> dict:
     if "api_spec_stub" not in solution_json:
         solution_json["api_spec_stub"] = ""
 
+    # ✅ FIX: api_spec_stub must be STRING
+    if isinstance(solution_json.get("api_spec_stub"), (dict, list)):
+        solution_json["api_spec_stub"] = json.dumps(solution_json["api_spec_stub"], indent=2)
+
+    # ✅ FIX: infra_as_code_stub must be STRING
+    if isinstance(solution_json.get("infra_as_code_stub"), (dict, list)):
+        solution_json["infra_as_code_stub"] = json.dumps(solution_json["infra_as_code_stub"], indent=2)
+
     # Normalize notes
     if "notes" not in solution_json or solution_json["notes"] is None:
         solution_json["notes"] = ""
@@ -127,6 +172,28 @@ def normalize_solution_output(solution_json: dict) -> dict:
             solution_json["cost_estimate"]["notes"] = ""
 
     return solution_json
+
+
+
+def clean_olmo_text(text: str) -> str:
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    text = "\n".join([line for line in text.splitlines() if not line.strip().startswith("|")])
+    text = text.replace("---", "")
+
+    # Convert common latex wrappers into plain text
+    text = text.replace("\\boxed{", "")
+    text = text.replace("\\begin{aligned}", "")
+    text = text.replace("\\end{aligned}", "")
+    text = text.replace("\\\\", "\n")
+
+    # remove \text{...} but keep inside content
+    text = re.sub(r"\\text\{([^}]*)\}", r"\1", text)
+
+    # remove remaining braces that come from latex formatting
+    text = text.replace("{", "").replace("}", "")
+
+    return text.strip()
+
 
 
 # ------------------------------------------------------------
@@ -141,29 +208,15 @@ def generate_design(req: DesignRequest):
         
 
         raw_olmo = call_llm(prompt).strip()
+        raw_olmo = clean_olmo_text(raw_olmo)
         print("RAW came from OLMo3\n", raw_olmo)
 
         if not raw_olmo:
             raise HTTPException(status_code=500, detail="OLMo3 returned empty output")
 
         # ✅ STEP 2: Build schema prompt for Llama3 using RAW OLMo output
-        schema_prompt = build_json_prompt(req, patterns, raw_olmo)
-
-        # ✅ STEP 3: Call Llama3 to convert RAW -> STRICT JSON
-        raw_llama = call_llama(schema_prompt).strip()
-        print("RAW came from Llama3 (JSON)\n", raw_llama)
-
-        if not raw_llama:
-            raise HTTPException(status_code=500, detail="Llama3 returned empty output")
-
-        if not raw_llama.startswith("{"):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Llama3 output not JSON. First 200 chars: {raw_llama[:200]}"
-            )
-
-        # ✅ STEP 4: Convert JSON string -> dict
-        solution_json = json.loads(raw_llama)
+        solution_json = parse_olmo_output_to_json(raw_olmo)
+        solution_json = normalize_solution_output(solution_json)
 
 
         # 🔒 REQUIRED normalization
@@ -173,11 +226,12 @@ def generate_design(req: DesignRequest):
             ArchitectureComponent(**c)
             for c in solution_json.get("components", [])
         ]
+        print("components are \n",components)
+        
+        raw_diagram = solution_json.get("mermaid_diagram", "")
+        raw_diagram = fix_mermaid_node_names(raw_diagram)
 
-        diagram = normalize_mermaid(
-            solution_json.get("mermaid_diagram", ""),
-            components
-        )
+        diagram = normalize_mermaid(raw_diagram, components)
 
         cost = solution_json.get("cost_estimate", {})
         per_env = [EnvironmentCost(**e) for e in cost.get("per_environment", [])]
@@ -204,13 +258,80 @@ def generate_design(req: DesignRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
+#mermaid syntax fixer
+
+def fix_mermaid_node_names(diagram: str) -> str:
+    """
+    Fix Mermaid node names ONLY when the diagram uses plain text nodes like:
+        API Gateway --> Catalog Service
+
+    Do NOT modify lines already in Mermaid node syntax like:
+        B[Data Ingestion Service] --> C[Data Lake]
+        A((Circle)) --> B
+        X["Label"] --> Y
+    """
+
+    if not diagram:
+        return diagram
+
+    fixed_lines = []
+
+    for line in diagram.splitlines():
+        raw = line
+        line = line.strip()
+
+        if not line:
+            continue
+
+        # keep graph direction line
+        if line.startswith(("graph", "flowchart")):
+            fixed_lines.append(line)
+            continue
+
+        # if already has node syntax, keep as-is
+        # examples: A[Label], B("Label"), C{"Decision"}, D((Circle))
+        if re.search(r"\w+\s*[\[\(\{]", line):
+            fixed_lines.append(raw.strip())
+            continue
+
+        # match edges: A --> B OR A -->|label| B
+        m = re.match(r"^(.+?)\s*-->\s*(.+)$", line)
+        if not m:
+            fixed_lines.append(raw.strip())
+            continue
+
+        left = m.group(1).strip()
+        right = m.group(2).strip()
+
+        # handle label syntax: A -->|text| B
+        label_match = re.match(r"^\|(.+?)\|\s*(.+)$", right)
+        label = None
+        if label_match:
+            label = label_match.group(1).strip()
+            right = label_match.group(2).strip()
+
+        def to_id(name: str) -> str:
+            return re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
+
+        left_id = to_id(left)
+        right_id = to_id(right)
+
+        if label:
+            fixed_lines.append(f'{left_id}["{left}"] -->|{label}| {right_id}["{right}"]')
+        else:
+            fixed_lines.append(f'{left_id}["{left}"] --> {right_id}["{right}"]')
+
+    return "\n".join(fixed_lines)
 
 
 @app.get("/{full_path:path}")
 def serve_react_app(full_path: str):
     # Do NOT intercept static or API routes
-    if full_path.startswith(("azure-icons", "static", "design")):
-        raise HTTPException(status_code=404)
+    if full_path.startswith(("azure-icons", "aws-icons", "gcp-icons", "static", "design")):
+      raise HTTPException(status_code=404)
+
 
     index = FRONTEND_BUILD_DIR / "index.html"
     return FileResponse(index)

@@ -1,53 +1,65 @@
 import requests
-from dotenv import load_dotenv
+import time
+import re
 
-
-load_dotenv()
-
-# Use your actual Ollama server (LAN or local machine)
 OLLAMA_HOST = "http://192.168.1.81:11434"
-MODEL_NAME = "llama3"
+MODEL_NAME = "olmo-3:latest"
 
-def call_llama(prompt: str, temperature: float = 0.2, max_tokens: int = 2048) -> str:
-    """
-    Calls Ollama LLM using JSON mode for reliable output.
-    Returns the generated content or an error message.
-    """
-    url = f"{OLLAMA_HOST}/api/chat"
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a senior cloud solution architect. "
-                           "Always reply in valid JSON ONLY. "
-                           "Do not use markdown or natural language. "
-                           "Return pure JSON object."
-            },
-            {"role": "user", "content": prompt}
-        ],
-        "stream": False,
-        "format": "json",              # <--- IMPORTANT for structured JSON output
-        "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens, # <--- Allows longer valid JSON
+def has_all_sections(text: str) -> bool:
+    required = [f"{i})" for i in range(1, 13)]
+    return all(r in text for r in required)
+
+def find_missing_sections(text: str):
+    missing = []
+    for i in range(1, 13):
+        if f"{i})" not in text:
+            missing.append(i)
+    return missing
+
+def call_llm(prompt: str, temperature: float = 0.05, max_tokens: int = 16000, retries: int = 3) -> str:
+    url = f"{OLLAMA_HOST}/api/generate"
+
+    full_text = ""
+    current_prompt = prompt
+
+    for attempt in range(retries):
+        payload = {
+            "model": MODEL_NAME,
+            "prompt": current_prompt,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "top_p": 0.9,
+                "repeat_penalty": 1.15,
+                "num_ctx": 16384,   # 🔥 increase if supported
+            }
         }
-    }
 
-    try:
-        response = requests.post(url, json=payload, timeout=120)
+        response = requests.post(url, json=payload, timeout=900)
         response.raise_for_status()
         data = response.json()
 
-        # Extract generated text content
-        return data["message"]["content"].strip()
+        text = (data.get("response") or "").strip()
+        if not text:
+            text = (data.get("thinking") or "").strip()
 
-    except requests.exceptions.ConnectionError:
-        return "ERROR: Unable to reach Ollama. Is it running?"
+        full_text += "\n" + text
 
-    except requests.exceptions.Timeout:
-        return "ERROR: Ollama response timeout. Try reducing complexity or increasing timeout."
+        if has_all_sections(full_text):
+            return full_text.strip()
 
-    except Exception as e:
-        print(f"❌ Ollama LLM Error: {e}")
-        return f"ERROR: {str(e)}"
+        missing = find_missing_sections(full_text)
+        print(f"Attempt {attempt+1}: Missing sections {missing}")
+
+        # ask model to continue from the first missing section
+        first_missing = missing[0] if missing else 12
+        current_prompt = (
+            prompt
+            + "\n\nYou stopped early. Continue output from section "
+            + f"{first_missing}) ONLY. Do not repeat earlier sections.\n"
+        )
+
+        time.sleep(0.5)
+
+    return full_text.strip()

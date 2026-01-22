@@ -34,6 +34,9 @@ const normalize = (s) =>
     ?.toLowerCase()
     .replace(/^azure\s+/i, "")   // remove leading "Azure "
     .replace(/\s+sql$/, " sql")  // normalize SQL suffix
+    .replace(/^aws\s+/i, "")
+    .replace(/^gcp\s+/i, "")
+    .replace(/\(.*?\)/g, "")
     .trim();
 
 const resolveAzureIcon = (cloudService) => {
@@ -107,6 +110,7 @@ const resolveAzureIcon = (cloudService) => {
 };
 
 
+
   const key = normalize(cloudService);
   const icon = map[key];
 
@@ -119,6 +123,182 @@ const resolveAzureIcon = (cloudService) => {
 };
 
 
+const AWS_ICON_BASE = "/aws-icons";
+
+const resolveAwsIcon = (cloudService) => {
+  if (!cloudService) return null;
+
+  const map = {
+    // analytics
+    "athena": "analytics/Athena.svg",
+    "glue": "analytics/Glue.svg",
+    "kinesis": "analytics/Kinesis.svg",
+    "quicksight": "analytics/QuickSight.svg",
+    "redshift": "analytics/Redshift.svg",
+    "emr": "analytics/EMR.svg",
+
+    // compute
+    "ec2": "compute/EC2.svg",
+    "lambda": "compute/Lambda.svg",
+    "ecs": "compute/ECS.svg",
+    "eks": "compute/EKS.svg",
+    "fargate": "compute/Fargate.svg",
+    "elastic beanstalk": "compute/Elastic_Beanstalk.svg",
+
+    // databases
+    "rds": "databases/RDS.svg",
+    "dynamodb": "databases/DynamoDB.svg",
+    "aurora": "databases/Aurora.svg",
+    "elasticache": "databases/ElastiCache.svg",
+    "neptune": "databases/Neptune.svg",
+
+    // integration
+    "sqs": "integration/SQS.svg",
+    "sns": "integration/SNS.svg",
+    "eventbridge": "integration/EventBridge.svg",
+    "step functions": "integration/StepFunctions.svg",
+    "api gateway": "integration/API_Gateway.svg",
+
+    // networking
+    "vpc": "networking/VPC.svg",
+    "route 53": "networking/Route53.svg",
+    "cloudfront": "networking/CloudFront.svg",
+    "elastic load balancer": "networking/Elastic_Load_Balancer.svg",
+    "nat gateway": "networking/NAT_Gateway.svg",
+
+    // security
+    "iam": "security/IAM.svg",
+    "cognito": "security/Cognito.svg",
+    "kms": "security/KMS.svg",
+    "waf": "security/WAF.svg",
+    "shield": "security/Shield.svg",
+    "secrets manager": "security/Secrets_Manager.svg",
+
+    // storage
+    "s3": "storage/S3.svg",
+    "ebs": "storage/EBS.svg",
+    "efs": "storage/EFS.svg",
+    "glacier": "storage/Glacier.svg",
+  };
+
+  const key = normalize(cloudService);
+  const icon = map[key];
+
+  if (!icon) {
+    console.warn("❌ No AWS icon mapping for:", cloudService);
+    return null;
+  }
+
+  return `${AWS_ICON_BASE}/${icon}`;
+};
+
+const GCP_ICON_BASE = "/gcp-icons";
+
+const resolveGcpIcon = (cloudService) => {
+  if (!cloudService) return null;
+
+  const map = {
+    // analytics
+    "bigquery": "analytics/BigQuery.svg",
+    "dataflow": "analytics/Dataflow.svg",
+    "dataproc": "analytics/Dataproc.svg",
+    "pubsub": "analytics/PubSub.svg",
+    "pub sub": "analytics/PubSub.svg",
+    "looker": "analytics/Looker.svg",
+
+    // compute
+    "compute engine": "compute/Compute_Engine.svg",
+    "app engine": "compute/App_Engine.svg",
+    "cloud functions": "compute/Cloud_Functions.svg",
+    "cloud run": "compute/Cloud_Run.svg",
+    "gke": "compute/GKE.svg",
+    "google kubernetes engine": "compute/GKE.svg",
+
+    // databases
+    "cloud sql": "databases/Cloud_SQL.svg",
+    "firestore": "databases/Firestore.svg",
+    "bigtable": "databases/Bigtable.svg",
+    "spanner": "databases/Spanner.svg",
+    "memorystore": "databases/Memorystore.svg",
+
+    // integration
+    "cloud tasks": "integration/Cloud_Tasks.svg",
+    "workflows": "integration/Workflows.svg",
+    "api gateway": "integration/API_Gateway.svg",
+    "pubsub integration": "integration/PubSub.svg",
+
+    // networking
+    "vpc": "networking/VPC.svg",
+    "cloud load balancing": "networking/Cloud_Load_Balancing.svg",
+    "cloud cdn": "networking/Cloud_CDN.svg",
+    "cloud dns": "networking/Cloud_DNS.svg",
+    "cloud nat": "networking/Cloud_NAT.svg",
+
+    // security
+    "iam": "security/IAM.svg",
+    "cloud kms": "security/Cloud_KMS.svg",
+    "secret manager": "security/Secret_Manager.svg",
+    "cloud armor": "security/Cloud_Armor.svg",
+    "security command center": "security/Security_Command_Center.svg",
+
+    // storage
+    "cloud storage": "storage/Cloud_Storage.svg",
+    "filestore": "storage/Filestore.svg",
+    "persistent disk": "storage/Persistent_Disk.svg",
+    "archive storage": "storage/Archive_Storage.svg",
+
+    // ai-ml
+    "vertex ai": "ai-ml/Vertex_AI.svg",
+    "automl": "ai-ml/AutoML.svg",
+    "vision ai": "ai-ml/Vision_AI.svg",
+    "natural language ai": "ai-ml/Natural_Language_AI.svg",
+
+    // devops
+    "cloud build": "devops/Cloud_Build.svg",
+    "artifact registry": "devops/Artifact_Registry.svg",
+    "cloud deploy": "devops/Cloud_Deploy.svg",
+    "cloud monitoring": "devops/Cloud_Monitoring.svg",
+    "cloud logging": "devops/Cloud_Logging.svg",
+  };
+
+  const key = normalize(cloudService);
+  const icon = map[key];
+
+  if (!icon) {
+    console.warn("❌ No GCP icon mapping for:", cloudService);
+    return null;
+  }
+
+  return `${GCP_ICON_BASE}/${icon}`;
+};
+
+const resolveCloudIcon = (cloudService) => {
+  if (!cloudService) return null;
+
+  const s = cloudService.toLowerCase();
+
+  // Azure detection
+  if (s.includes("azure") || s.includes("synapse") || s.includes("cosmos") || s.includes("power bi")) {
+    return resolveAzureIcon(cloudService);
+  }
+
+  // AWS detection
+  if (s.includes("aws") || s.includes("ec2") || s.includes("s3") || s.includes("lambda") || s.includes("dynamodb")) {
+    return resolveAwsIcon(cloudService);
+  }
+
+  // GCP detection
+  if (s.includes("gcp") || s.includes("bigquery") || s.includes("cloud run") || s.includes("gke") || s.includes("firestore")) {
+    return resolveGcpIcon(cloudService);
+  }
+
+  // fallback try all
+  return (
+    resolveAzureIcon(cloudService) ||
+    resolveAwsIcon(cloudService) ||
+    resolveGcpIcon(cloudService)
+  );
+};
 
 
 // 🔧 Convert component name to Mermaid-safe node ID
@@ -198,7 +378,8 @@ const enrichMermaidWithIcons = (mermaidCode, components) => {
   let enriched = mermaidCode;
 
   for (const c of components) {
-    const iconPath = resolveAzureIcon(c.cloud_service);
+    const iconPath = resolveCloudIcon(c.cloud_service);
+
     if (!iconPath) continue;
 
     const safeLabel = c.name.replace(/"/g, '\\"');
