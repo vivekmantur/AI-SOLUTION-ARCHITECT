@@ -5,16 +5,27 @@ from groq import Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 MODEL_NAME = "llama-3.1-8b-instant"
-   # or llama-3.1-8b-instant
+# or "llama-3.1-8b-instant"
 
-def has_all_sections(text: str) -> bool:
-    required = [f"{i})" for i in range(1, 13)]
+
+TOTAL_TASKS = 7
+
+
+def has_all_tasks(text: str) -> bool:
+    required = [f"TASK {i}" for i in range(1, TOTAL_TASKS + 1)]
     return all(r in text for r in required)
 
-def find_missing_sections(text: str):
-    return [i for i in range(1, 13) if f"{i})" not in text]
 
-def call_llm(prompt: str, temperature: float = 0.05, max_tokens: int = 16000, retries: int = 3) -> str:
+def find_missing_tasks(text: str):
+    return [i for i in range(1, TOTAL_TASKS + 1) if f"TASK {i}" not in text]
+
+
+def call_llm(
+    prompt: str,
+    temperature: float = 0.05,
+    max_tokens: int = 16000,
+    retries: int = 3
+) -> str:
     full_text = ""
     current_prompt = prompt
 
@@ -28,19 +39,22 @@ def call_llm(prompt: str, temperature: float = 0.05, max_tokens: int = 16000, re
         )
 
         text = (resp.choices[0].message.content or "").strip()
-        full_text += "\n" + text
+        if text:
+            full_text += "\n" + text
 
-        if has_all_sections(full_text):
+        if has_all_tasks(full_text):
             return full_text.strip()
 
-        missing = find_missing_sections(full_text)
-        print(f"Attempt {attempt+1}: Missing sections {missing}")
+        missing = find_missing_tasks(full_text)
+        print(f"Attempt {attempt + 1}: Missing tasks {missing}")
 
-        first_missing = missing[0] if missing else 12
+        first_missing = missing[0] if missing else TOTAL_TASKS
+
         current_prompt = (
             prompt
-            + f"\n\nYou stopped early. Continue output from section {first_missing}) ONLY. "
-              "Do not repeat earlier sections.\n"
+            + f"\n\nYou stopped early. Continue output from TASK {first_missing} ONLY. "
+              "Do not repeat earlier tasks. "
+              "Follow the exact same output format.\n"
         )
 
         time.sleep(0.5)

@@ -275,24 +275,6 @@ const resolveGcpIcon = (cloudService) => {
 const resolveCloudIcon = (cloudService) => {
   if (!cloudService) return null;
 
-  const s = cloudService.toLowerCase();
-
-  // Azure detection
-  if (s.includes("azure") || s.includes("synapse") || s.includes("cosmos") || s.includes("power bi")) {
-    return resolveAzureIcon(cloudService);
-  }
-
-  // AWS detection
-  if (s.includes("aws") || s.includes("ec2") || s.includes("s3") || s.includes("lambda") || s.includes("dynamodb")) {
-    return resolveAwsIcon(cloudService);
-  }
-
-  // GCP detection
-  if (s.includes("gcp") || s.includes("bigquery") || s.includes("cloud run") || s.includes("gke") || s.includes("firestore")) {
-    return resolveGcpIcon(cloudService);
-  }
-
-  // fallback try all
   return (
     resolveAzureIcon(cloudService) ||
     resolveAwsIcon(cloudService) ||
@@ -308,146 +290,115 @@ const toNodeId = (name) =>
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
-
 const SECTIONS = {
-  REQUIREMENTS: 'requirements',
-  ARCHITECTURE: 'architecture',
-  DIAGRAM: 'diagram',
-  CLOUD_DIAGRAM: 'cloud_diagram',
-  COMPONENTS: 'components',
-  NFR: 'nfr',
-  TECH: 'tech',
-  COST: 'cost',
-  API: 'api',
-  IAC: 'iac',
-  NOTES: 'notes',
+  TASK1: "task1",
+  TASK2: "task2",
+  TASK3: "task3",
+  TASK4: "task4",
+  TASK5: "task5",
+  COMPONENTS: "components",
+  DIAGRAM: "diagram",
+  CLOUD_DIAGRAM: "cloud_diagram",
 };
 
-
 const SolutionDisplay = ({ solution }) => {
-  const mermaidRef = useRef(null);
-   const diagramRef = useRef(null);
+  const diagramRef = useRef(null);
   const cloudDiagramRef = useRef(null);
+
   const [showRawDiagram, setShowRawDiagram] = useState(false);
   const [diagramError, setDiagramError] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [activeSection, setActiveSection] = useState(SECTIONS.REQUIREMENTS);
 
+  const [activeSection, setActiveSection] = useState(SECTIONS.TASK1);
 
   useEffect(() => {
-    // Initialize mermaid once
-    mermaid.initialize({ 
-      startOnLoad: false,
-      theme: 'base',
-      themeVariables: {
-        primaryColor: '#3b82f6',
-        primaryTextColor: '#000000',
-        primaryBorderColor: '#2563eb',
-        lineColor: '#374151',
-        secondaryColor: '#8b5cf6',
-        secondaryTextColor: '#000000',
-        tertiaryColor: '#f3f4f6',
-        tertiaryTextColor: '#000000',
-        background: '#ffffff',
-        mainBkg: '#ffffff',
-        textColor: '#000000',
-        labelTextColor: '#000000',
-        nodeBorder: '#2563eb',
-        nodeTextColor: '#000000',
-        clusterBkg: '#e0e7ff',
-        clusterBorder: '#3b82f6',
-        edgeLabelBackground: '#ffffff',
-        fontSize: '14px',
-        fontFamily: 'Arial, sans-serif',
-      },
-      securityLevel: 'loose',
-      flowchart: {
-        htmlLabels: true,
-        curve: 'basis',
-        nodeSpacing: 80,
-        rankSpacing: 80,
-        useMaxWidth: false,
-      },
-    });
+   mermaid.initialize({
+  startOnLoad: false,
+  theme: "base",
+  securityLevel: "loose",
+  flowchart: {
+    htmlLabels: true,
+    curve: "basis",
+    nodeSpacing: 50,
+    rankSpacing: 80,
+    useMaxWidth: false,
+  },
+});
+
   }, []);
 
+  const enrichMermaidWithIcons = (mermaidCode, components) => {
+    let enriched = mermaidCode;
+
+    for (const c of components) {
+      const iconPath = resolveCloudIcon(c.cloud_service);
+      if (!iconPath) continue;
+
+      const safeLabel = (c.name || "").replace(/"/g, '\\"');
+
+     const htmlLabel = `
+      <div style="
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:4px;
+        padding:2px;
+        font-size:10px;
+        line-height:1.1;
+        text-align:center;
+        width:90px;
+      ">
+        <div style="font-weight:600;">${safeLabel}</div>
+        <img src="${iconPath}" style="width:20px;height:20px;object-fit:contain;" />
+      </div>
+      `.trim();
 
 
 
-const enrichMermaidWithIcons = (mermaidCode, components) => {
-  let enriched = mermaidCode;
+      const regex = new RegExp(`\\["${safeLabel}"\\]`, "g");
+      enriched = enriched.replace(regex, `["${htmlLabel}"]`);
+    }
 
-  for (const c of components) {
-    const iconPath = resolveCloudIcon(c.cloud_service);
+    return enriched;
+  };
 
-    if (!iconPath) continue;
-
-    const safeLabel = c.name.replace(/"/g, '\\"');
-
-    const htmlLabel = `
-<div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-  <div>${safeLabel}</div>
-  <img src="${iconPath}" width="32" height="32"/>
-</div>
-`.trim();
-
-    // replace only the label text
-    const regex = new RegExp(
-      `\\["${safeLabel}"\\]`,
-      "g"
-    );
-
-    enriched = enriched.replace(
-      regex,
-      `["${htmlLabel}"]`
-    );
-  }
-
-  return enriched;
-};
-
-
-
- useEffect(() => {
+useEffect(() => {
   const renderDiagram = async () => {
     const targetRef =
-      activeSection === SECTIONS.CLOUD_DIAGRAM
-        ? cloudDiagramRef
-        : diagramRef;
+      activeSection === SECTIONS.CLOUD_DIAGRAM ? cloudDiagramRef : diagramRef;
 
-    if (!solution?.mermaid_diagram || !targetRef.current) return;
+    let diagramSource = solution?.task_7_mermaid_diagram || "";
+
+    // normalize header (remove graph TD / flowchart TD)
+    diagramSource = diagramSource
+      .replace(/^graph\s+(TD|LR|RL|BT)\s*/i, "")
+      .replace(/^flowchart\s+(TD|LR|RL|BT)\s*/i, "")
+      .trim();
+
+    if (!diagramSource || !targetRef.current) return;
 
     try {
-      targetRef.current.innerHTML = '';
+      targetRef.current.innerHTML = "";
       setDiagramError(null);
 
       const renderId = `architecture-${activeSection}-${Date.now()}`;
-      const diagramSource =
+
+      const finalDiagram =
         activeSection === SECTIONS.CLOUD_DIAGRAM
-          ? enrichMermaidWithIcons(
-              solution.mermaid_diagram,
-              solution.components || []
-            )
-          : solution.mermaid_diagram;
+          ? `
+%%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 80}} }%%
+flowchart TD
+${enrichMermaidWithIcons(diagramSource, solution?.task_6_components || [])}
+`
+          : solution?.task_7_mermaid_diagram || "";
 
-      const { svg } = await mermaid.render(renderId, diagramSource);
-
+      const { svg } = await mermaid.render(renderId, finalDiagram);
       targetRef.current.innerHTML = svg;
-
-
-      // 2️⃣ ONLY AFTER SVG EXISTS → inject icons
-      if (activeSection === SECTIONS.CLOUD_DIAGRAM) {
-        const renderedSvg = targetRef.current.querySelector("svg");
-        console.log("SVG AFTER RENDER?", !!renderedSvg);
-
-       
-
-      }
-
     } catch (error) {
       console.error("Mermaid render error:", error);
       setDiagramError(error.message);
-      targetRef.current.innerHTML = '';
+      targetRef.current.innerHTML = "";
     }
   };
 
@@ -455,388 +406,342 @@ const enrichMermaidWithIcons = (mermaidCode, components) => {
 }, [solution, activeSection]);
 
 
-
-
-
-
   const handleCopyDiagram = () => {
-    if (solution?.mermaid_diagram) {
-      navigator.clipboard.writeText(solution.mermaid_diagram);
+    if (solution?.task_7_mermaid_diagram) {
+      navigator.clipboard.writeText(solution.task_7_mermaid_diagram);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     }
   };
 
-
-
   return (
     <Box>
-      <Alert 
-        icon={<CheckCircleIcon fontSize="inherit" />} 
+      <Alert
+        icon={<CheckCircleIcon fontSize="inherit" />}
         severity="success"
-        
         sx={{ mb: 3 }}
       >
         Solution Design Successfully Generated
       </Alert>
+
+      {/* Navigation */}
       <Paper elevation={1} sx={{ p: 2, mb: 3 }}>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          {Object.values(SECTIONS).map((section) => (
-            <Button
-              key={section}
-              size="small"
-              variant={activeSection === section ? 'contained' : 'outlined'}
-              onClick={() => setActiveSection(section)}
-            >
-              {section.toUpperCase()}
-            </Button>
-          ))}
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.TASK1 ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.TASK1)}
+          >
+            Requirements Understanding
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.TASK2 ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.TASK2)}
+          >
+            Architecture Overview
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.TASK3 ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.TASK3)}
+          >
+            Architecture Flow
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.TASK4 ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.TASK4)}
+          >
+            Best Architecture Recommendation
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.TASK5 ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.TASK5)}
+          >
+            Key Design Decisions
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.COMPONENTS ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.COMPONENTS)}
+          >
+            COMPONENTS
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.DIAGRAM ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.DIAGRAM)}
+          >
+            DIAGRAM
+          </Button>
+
+          <Button
+            size="small"
+            variant={activeSection === SECTIONS.CLOUD_DIAGRAM ? "contained" : "outlined"}
+            onClick={() => setActiveSection(SECTIONS.CLOUD_DIAGRAM)}
+          >
+            CLOUD DIAGRAM
+          </Button>
         </Box>
       </Paper>
 
-      {/* Normalized Requirements */}
-      {
-      activeSection === SECTIONS.REQUIREMENTS && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <AccountTreeIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             2️⃣ Normalized Understanding of Requirements
-          </Typography>
-        </Box>
-        <Box 
-          component="pre" 
-          sx={{ 
-            backgroundColor: '#1e1e1e', 
-            color: '#d4d4d4',
-            p: 2, 
-            borderRadius: 1,
-            overflow: 'auto',
-            fontSize: '0.875rem',
-          }}
-        >
-          {JSON.stringify(solution.normalized_requirements, null, 2)}
-        </Box>
-      </Paper>
-      )}
-
-      <Divider sx={{ my: 3 }} />
-
-      {/* Architecture Description */}
-      {
-        activeSection === SECTIONS.ARCHITECTURE && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <ArchitectureIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             3️⃣ Architecture Overview
-          </Typography>
-        </Box>
-        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-          {solution.architecture_description || 'No description provided.'}
-        </Typography>
-      </Paper>
-      )}
-      {/* Mermaid Diagram */}
-      {
-      activeSection === SECTIONS.DIAGRAM && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <AccountTreeIcon sx={{ mr: 1 }} />
-            <Typography variant="h6">
-               4️⃣ Architecture Diagram (Visual)
-            </Typography>
-          </Box>
-          {solution.mermaid_diagram && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                size="small"
-                startIcon={<ContentCopyIcon />}
-                onClick={handleCopyDiagram}
-                variant="outlined"
-              >
-                {copySuccess ? 'Copied!' : 'Copy Code'}
-              </Button>
-              <Button
-                size="small"
-                endIcon={<ExpandMoreIcon sx={{ transform: showRawDiagram ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />}
-                onClick={() => setShowRawDiagram(!showRawDiagram)}
-                variant="outlined"
-              >
-                {showRawDiagram ? 'Hide' : 'Show'} Raw Code
-              </Button>
-            </Box>
-          )}
-        </Box>
-        
-        {solution.mermaid_diagram ? (
-          <>
-            {diagramError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  <strong>Error rendering diagram:</strong>
-                </Typography>
-                <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 1 }}>
-                  {diagramError}
-                </Typography>
-                <Typography variant="body2">
-                  The diagram code has been sanitized but may still contain syntax errors. 
-                  Please check the raw code below or try regenerating the design.
-                </Typography>
-              </Alert>
-            )}
-            
-            <Collapse in={showRawDiagram}>
-              <Box 
-                component="pre" 
-                sx={{ 
-                  backgroundColor: '#1e1e1e', 
-                  color: '#d4d4d4',
-                  p: 2, 
-                  borderRadius: 1,
-                  overflow: 'auto',
-                  fontSize: '0.875rem',
-                  mb: 2,
-                  maxHeight: '300px',
-                }}
-              >
-                
-                {solution.mermaid_diagram}
-              </Box>
-            </Collapse>
-            
-            <Box 
-              ref={diagramRef}
-              sx={{ 
-                display: 'flex', 
-                justifyContent: 'center',
-                p: 2,
-                backgroundColor: '#ffffff',
-                borderRadius: 1,
-                overflow: 'auto',
-                minHeight: diagramError ? '100px' : '200px',
-                '& svg': {
-                  maxWidth: '100%',
-                  height: 'auto',
-                },
-                '& .node text, & .edgeLabel text, & text': {
-                  fill: '#000000 !important',
-                  fontWeight: '500 !important',
-                  fontSize: '14px !important',
-                },
-                '& .label': {
-                  color: '#000000 !important',
-                },
-              }}
-            />
-          </>
-        ) : (
-          <Alert severity="warning">No diagram available</Alert>
-        )}
-      </Paper>
-      )}
-      <Divider sx={{ my: 3 }} />
-
-      {/* Components */}
-      {activeSection === SECTIONS.COMPONENTS && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <ExtensionIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             5️⃣ Key Components and Cloud Services
-          </Typography>
-        </Box>
-        {solution.components?.map((component, index) => (
-          <Card key={index} sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                🔹 {component.name} <Chip label={component.type} size="small" sx={{ ml: 1 }} />
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                ☁️ Service: <strong>{component.cloud_service || 'N/A'}</strong>
-              </Typography>
-              <Typography variant="body2">
-                📄 {component.description || 'No description'}
-              </Typography>
-            </CardContent>
-          </Card>
-        ))}
-      </Paper>
-      )}
-
-      {/* Non-Functional Requirements */}
-      {activeSection === SECTIONS.NFR && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <SecurityIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             6️⃣ Non-Functional Requirements
-          </Typography>
-        </Box>
-        {solution.non_functional_considerations?.length > 0 ? (
-          <Box component="ul" sx={{ pl: 2 }}>
-            {solution.non_functional_considerations.map((item, index) => (
-              <Typography component="li" key={index} variant="body1" sx={{ mb: 1 }}>
-                ✔️ {item}
-              </Typography>
-            ))}
-          </Box>
-        ) : (
-          <Typography>No details provided.</Typography>
-        )}
-      </Paper>
-      )}
-      {/* Tech Stack */}
-      {activeSection === SECTIONS.TECH && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <BuildIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             7️⃣ Proposed Tech Stack
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          {solution.tech_stack?.length > 0 ? (
-            solution.tech_stack.map((tech, index) => (
-              <Chip key={index} label={tech} color="primary" variant="outlined" />
-            ))
-          ) : (
-            <Typography>No tech stack generated.</Typography>
-          )}
-        </Box>
-      </Paper>
-      )}
-      <Divider sx={{ my: 3 }} />
-      
-      {/* Cost Estimate */}
-      {activeSection === SECTIONS.COST && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <AttachMoneyIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             8️⃣ Estimated Cloud Cost Breakdown
-          </Typography>
-        </Box>
-        <Typography variant="h5" gutterBottom color="primary">
-          💵 Total Estimated Monthly Cost: ${solution.cost_estimate?.total_monthly_usd?.toFixed(2) || '0.00'}
-        </Typography>
-        {solution.cost_estimate?.per_environment?.map((env, index) => (
-          <Typography key={index} variant="body1" sx={{ ml: 2, mb: 1 }}>
-            • <strong>{env.environment}</strong> ➝ ${env.monthly_usd?.toFixed(2)}
-          </Typography>
-        ))}
-        {solution.cost_estimate?.notes && (
-          <Alert severity="info" sx={{ mt: 2 }}>
-            📝 Notes: {solution.cost_estimate.notes}
-          </Alert>
-        )}
-      </Paper>
-      )}
-      <Divider sx={{ my: 3 }} />
-
-      {/* API Spec */}
-      {activeSection === SECTIONS.API && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <ApiIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-             9️⃣ API Specification Stub
-          </Typography>
-        </Box>
-        <Box 
-          component="pre" 
-          sx={{ 
-            backgroundColor: '#1e1e1e', 
-            color: '#d4d4d4',
-            p: 2, 
-            borderRadius: 1,
-            overflow: 'auto',
-            fontSize: '0.875rem',
-          }}
-        >
-          {solution.api_spec_stub || 'No API stub generated.'}
-        </Box>
-      </Paper>
-      )}
-      {/* Infrastructure as Code */}
-      {activeSection === SECTIONS.IAC && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <CodeIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">
-            🔟 Infrastructure-as-Code Stub (Terraform/Bicep)
-          </Typography>
-        </Box>
-        <Box 
-          component="pre" 
-          sx={{ 
-            backgroundColor: '#1e1e1e', 
-            color: '#d4d4d4',
-            p: 2, 
-            borderRadius: 1,
-            overflow: 'auto',
-            fontSize: '0.875rem',
-          }}
-        >
-          {solution.infra_as_code_stub || 'No IaC generated.'}
-        </Box>
-      </Paper>
-      )}
-
-      {/* Additional Notes */}
-      
-      {activeSection === SECTIONS.NOTES && solution.notes && (
+      {/* TASK 1 */}
+      {activeSection === SECTIONS.TASK1 && (
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <NotesIcon sx={{ mr: 1 }} />
-            <Typography variant="h6">
-              📝 Additional Notes
-            </Typography>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            1️⃣ — Normalized Requirement Understanding
+          </Typography>
+
+          <Box
+            component="pre"
+            sx={{
+              backgroundColor: "#1e1e1e",
+              color: "#d4d4d4",
+              p: 2,
+              borderRadius: 1,
+              overflow: "auto",
+              fontSize: "0.875rem",
+            }}
+          >
+            {JSON.stringify(solution.task_1_normalize_requirement, null, 2)}
           </Box>
-          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-            {solution.notes}
+        </Paper>
+      )}
+
+      {/* TASK 2 */}
+      {activeSection === SECTIONS.TASK2 && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            2️⃣ - Platform Architecture (High Level)
+          </Typography>
+
+          <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+            {solution.task_2_platform_architecture_high_level || "No output"}
           </Typography>
         </Paper>
       )}
+
+      {/* TASK 3 */}
+      {activeSection === SECTIONS.TASK3 && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            3️⃣ — Architecture Flow Diagram (Text View)
+          </Typography>
+
+          <Box
+            component="pre"
+            sx={{
+              backgroundColor: "#1e1e1e",
+              color: "#d4d4d4",
+              p: 2,
+              borderRadius: 1,
+              overflow: "auto",
+              fontSize: "0.875rem",
+            }}
+          >
+            {solution.task_3_architecture_flow_diagram_text_view || "No output"}
+          </Box>
+        </Paper>
+      )}
+
+      {/* TASK 4 */}
+      {activeSection === SECTIONS.TASK4 && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            4️⃣ — Best Architecture Recommendation
+          </Typography>
+
+          <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+            {solution.task_4_best_architecture_recommendation || "No output"}
+          </Typography>
+        </Paper>
+      )}
+
+      {/* TASK 5 */}
+      {activeSection === SECTIONS.TASK5 && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            5️⃣ — Key Design Decisions
+          </Typography>
+
+          <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+            {solution.task_5_key_design_decisions || "No output"}
+          </Typography>
+        </Paper>
+      )}
+
+      {/* TASK 6 Components */}
+      {activeSection === SECTIONS.COMPONENTS && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+            <ExtensionIcon sx={{ mr: 1 }} />
+            <Typography variant="h6">6️⃣ TASK 6 — Components</Typography>
+          </Box>
+
+          {(solution.task_6_components || []).map((component, index) => (
+            <Card key={index} sx={{ mb: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  🔹 {component.name}{" "}
+                  <Chip label={component.type} size="small" sx={{ ml: 1 }} />
+                </Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  ☁️ Service: <strong>{component.cloud_service || "N/A"}</strong>
+                </Typography>
+                <Typography variant="body2">
+                  📄 {component.description || "No description"}
+                </Typography>
+              </CardContent>
+            </Card>
+          ))}
+        </Paper>
+      )}
+
+      {/* TASK 7 Mermaid */}
+      {activeSection === SECTIONS.DIAGRAM && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              mb: 2,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center" }}>
+              <AccountTreeIcon sx={{ mr: 1 }} />
+              <Typography variant="h6">7️⃣ TASK 7 — Mermaid Diagram</Typography>
+            </Box>
+
+            {solution.task_7_mermaid_diagram && (
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button
+                  size="small"
+                  startIcon={<ContentCopyIcon />}
+                  onClick={handleCopyDiagram}
+                  variant="outlined"
+                >
+                  {copySuccess ? "Copied!" : "Copy Code"}
+                </Button>
+
+                <Button
+                  size="small"
+                  endIcon={
+                    <ExpandMoreIcon
+                      sx={{
+                        transform: showRawDiagram
+                          ? "rotate(180deg)"
+                          : "rotate(0deg)",
+                        transition: "0.3s",
+                      }}
+                    />
+                  }
+                  onClick={() => setShowRawDiagram(!showRawDiagram)}
+                  variant="outlined"
+                >
+                  {showRawDiagram ? "Hide" : "Show"} Raw Code
+                </Button>
+              </Box>
+            )}
+          </Box>
+
+          {diagramError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Mermaid Error: {diagramError}
+            </Alert>
+          )}
+
+          <Collapse in={showRawDiagram}>
+            <Box
+              component="pre"
+              sx={{
+                backgroundColor: "#1e1e1e",
+                color: "#d4d4d4",
+                p: 2,
+                borderRadius: 1,
+                overflow: "auto",
+                fontSize: "0.875rem",
+                mb: 2,
+                maxHeight: "300px",
+              }}
+            >
+              {solution.task_7_mermaid_diagram}
+            </Box>
+          </Collapse>
+
+          <Box
+            ref={diagramRef}
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              p: 2,
+              backgroundColor: "#ffffff",
+              borderRadius: 1,
+              overflow: "auto",
+              minHeight: diagramError ? "100px" : "200px",
+              "& svg": { maxWidth: "100%", height: "auto" },
+            }}
+          />
+        </Paper>
+      )}
+
+      {/* Cloud Diagram */}
       {activeSection === SECTIONS.CLOUD_DIAGRAM && (
-  <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-      <ArchitectureIcon sx={{ mr: 1 }} />
-      <Typography variant="h6">
-        ☁️ Cloud Architecture Diagram
-      </Typography>
-    </Box>
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+            <ArchitectureIcon sx={{ mr: 1 }} />
+            <Typography variant="h6">☁️ Cloud Diagram (Icons)</Typography>
+          </Box>
 
-    <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-      Logical architecture mapped to cloud services with visual icons.
-    </Typography>
+          <Box
+            ref={cloudDiagramRef}
+            sx={{
+              width: "100%",
+              maxWidth: "900px",
+              margin: "0 auto",
+              backgroundColor: "#ffffff",
+              borderRadius: 2,
+              border: "1px solid #e5e7eb",
+              p: 1.5,
 
-    <Box
-  ref={cloudDiagramRef}
-  sx={{
-    display: 'flex',
-    justifyContent: 'center',
-    p: 2,
-    backgroundColor: '#ffffff',
-    borderRadius: 1,
-    overflow: 'visible',
-    '& svg': {
-      overflow: 'visible',
-    },
-    '& .node': {
-      overflow: 'visible',
-    },
-    '& .node > rect': {
-      overflow: 'visible',
-    },
-  }}
-/>
+              overflowX: "auto",
+              overflowY: "hidden",
+
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+
+              "& svg": {
+                maxWidth: "100%",
+                height: "auto",
+                display: "block",
+              },
+
+              // reduce node box size globally
+              "& .node rect, & .node polygon": {
+                rx: "6px",
+                ry: "6px",
+              },
+
+              "& .label": {
+                fontSize: "10px !important",
+              },
+            }}
+          />
 
 
-  </Paper>
-)}
+        </Paper>
+      )}
 
+      <Divider sx={{ my: 3 }} />
     </Box>
   );
 };

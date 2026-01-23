@@ -1,173 +1,138 @@
 import re
-from typing import List
+from typing import List, Optional
 from .models import ArchitectureComponent
+
+
+def _to_node_id(name: str) -> str:
+    if not name:
+        return "node"
+
+    nid = name.lower().strip()
+    nid = re.sub(r"\(.*?\)", "", nid)  # remove (ADF) etc from ID only
+    nid = re.sub(r"[^a-z0-9]+", "_", nid)
+    nid = nid.strip("_")
+    return nid or "node"
 
 
 def normalize_mermaid(
     diagram: str,
-    components: List[ArchitectureComponent] | None = None,
+    components: Optional[List[ArchitectureComponent]] = None,
 ) -> str:
     if not diagram:
-        return diagram
+        return ""
 
     diagram = diagram.strip()
 
-    # --------------------------------------------------
-    # 1. Remove semicolons
-    # --------------------------------------------------
+    # 1) Remove semicolons
     diagram = diagram.replace(";", "")
 
-    # --------------------------------------------------
-    # 2. Normalize arrows (FINAL, SAFE)
-    # --------------------------------------------------
+    # 2) Fix invalid Mermaid label terminator: |label|>
+    diagram = diagram.replace("|>", "|")
 
-    # Solid arrows
+    # ✅ IMPORTANT: after fixing |>, it becomes || sometimes
+    diagram = diagram.replace("||", "|")
+
+    # 3) Normalize arrows
     diagram = diagram.replace("->>", "-->")
     diagram = diagram.replace("-->>", "-->")
     diagram = diagram.replace("--->", "-->")
     diagram = re.sub(r"(?<!-)->(?!>)", "-->", diagram)
 
-    # 🔥 Dash arrows — collapse ALL malformed variants to '-.->'
-    diagram = re.sub(r"-\.+-+>", "-.->", diagram)
-    diagram = re.sub(r"-\.+>", "-.->", diagram)
-    diagram = diagram.replace("-.-->", "-.->")
-    diagram = diagram.replace("-.->>", "-.->")
+    # 4) Ensure header exists
+    lines = [ln.strip() for ln in diagram.splitlines() if ln.strip()]
+    if not lines:
+        return "flowchart LR\n"
 
-    # --------------------------------------------------
-    # 3. Remove header completely
-    # --------------------------------------------------
-    diagram = re.sub(
-        r"^graph\s+TD\s*\n?",
-        "",
-        diagram,
-        flags=re.IGNORECASE,
-    )
+    first = lines[0].lower()
+    if first.startswith("graph "):
+        direction = first.split()[-1].upper() if len(first.split()) > 1 else "LR"
+        lines[0] = f"flowchart {direction}"
+    elif not first.startswith("flowchart "):
+        lines.insert(0, "flowchart LR")
 
-    # --------------------------------------------------
-    # 4. Extract alias map (A[Label])
-    # --------------------------------------------------
-    alias_map = {}
+    header = lines[0]
+    body = lines[1:]
 
-    def alias(match):
-        alias_map[match.group(1)] = match.group(2)
-        return match.group(2)
+    # 5) Extract edge lines
+    edge_lines = [ln for ln in body if "-->" in ln or "-.->" in ln]
 
-    diagram = re.sub(r"\b([A-Z])\[(.*?)\]", alias, diagram)
+    if not edge_lines:
+        return header + "\n"
 
-    # --------------------------------------------------
-    # 5. Replace alias references (B, C, D → Labels)
-    # --------------------------------------------------
-    for k, v in alias_map.items():
-        diagram = re.sub(rf"\b{k}\b", v, diagram)
+    label_to_id = {}
 
-    # --------------------------------------------------
-    # 6. Extract raw edges ONLY
-    # --------------------------------------------------
-    raw_edges = []
-    for line in diagram.splitlines():
-        if "-->" in line or "-.->" in line:
-            raw_edges.append(line.strip())
+    def get_node_id(label: str) -> str:
+        label = label.strip().strip('"').strip("'")
+        if label not in label_to_id:
+            label_to_id[label] = _to_node_id(label)
+        return label_to_id[label]
 
-    # --------------------------------------------------
-    # 7. Canonicalize nodes
-    # --------------------------------------------------
-    name_to_node = {}
-    if components:
-        for c in components:
-            nid = (
-                c.name.lower()
-                .replace(" ", "_")
-                .replace("-", "_")
-                .replace("/", "_")
-            )
-            name_to_node[c.name] = f'{nid}["{c.name}"]'
-
-       # --------------------------------------------------
-    # 8. Build clean edges (ONE PER LINE)
-    # --------------------------------------------------
     clean_edges = []
 
-    for edge in raw_edges:
-        # Split arrow
-        if "-.->" in edge:
-            left, right = edge.split("-.->", 1)
-            arrow = "-.->"
-        else:
-            left, right = edge.split("-->", 1)
-            arrow = "-->"
+    for edge in edge_lines:
+        arrow = "-.->" if "-.->" in edge else "-->"
 
+        left, right = edge.split(arrow, 1)
         left = left.strip()
         right = right.strip()
 
-        # Replace nodes
-        for name, node in name_to_node.items():
-            left = re.sub(rf"\b{re.escape(name)}\b", node, left)
-            right = re.sub(rf"\b{re.escape(name)}\b", node, right)
+        # support arrow labels: A -->|label| B
+        label = None
+        m = re.match(r"^\|(.+?)\|\s*(.+)$", right)
+        if m:
+            label = m.group(1).strip()
+            right = m.group(2).strip()
 
-        # Normalize edge-label spacing
-        left = re.sub(r"\s*\|\s*([^|]+?)\s*\|\s*", r"|\\1|", left)
-        right = re.sub(r"\s*\|\s*([^|]+?)\s*\|\s*", r"|\\1|", right)
+        # fix if right starts with stray "|"
+        right = right.lstrip("|").strip()
 
-        # 🔥 DROP edges without a valid source node
-        if not re.search(r'\["[^"]+"\]', left):
+        if not left or not right:
             continue
 
-        # 🔥 DROP edges without a valid target node
-        if not re.search(r'\["[^"]+"\]', right):
+        # drop self-loops
+        if left.lower() == right.lower():
             continue
 
-        clean_edges.append(f"{left}{arrow}{right}")
+        left_id = get_node_id(left)
+        right_id = get_node_id(right)
 
+        if label:
+            clean_edges.append(
+                f'{left_id}["{left}"] {arrow}|{label}| {right_id}["{right}"]'
+            )
+        else:
+            clean_edges.append(
+                f'{left_id}["{left}"] {arrow} {right_id}["{right}"]'
+            )
 
-    # --------------------------------------------------
-    # 9. FINAL authoritative sanitize (PIPELINE REBUILD)
-    # --------------------------------------------------
+    if not clean_edges:
+        return header + "\n"
+
+    # 6) Emit nodes (from components + from edges)
+    node_lines = []
+
     if components:
-        # Preferred logical order for analytics platforms
-        preferred_order = [
-            "Data Ingestion Service",
-            "ETL Pipeline",
-            "Data Lake",
-            "Data Warehouse",
-            "BI Dashboard Service",
-            "Reporting",
-        ]
+        for c in components:
+            if not c.name:
+                continue
+            nid = _to_node_id(c.name)
+            node_lines.append(f'{nid}["{c.name}"]')
+            label_to_id[c.name] = nid
 
-        def node_id(name: str) -> str:
-            return (
-                name.lower()
-                .replace(" ", "_")
-                .replace("-", "_")
-                .replace("/", "_")
-            )
+    for label, nid in label_to_id.items():
+        node_lines.append(f'{nid}["{label}"]')
 
-        component_names = [c.name for c in components]
+    # remove duplicates
+    seen = set()
+    final_nodes = []
+    for n in node_lines:
+        if n not in seen:
+            final_nodes.append(n)
+            seen.add(n)
 
-        # Keep only components that actually exist
-        ordered = [n for n in preferred_order if n in component_names]
+    out = [header, ""]
+    out.extend(final_nodes)
+    out.append("")
+    out.extend(clean_edges)
 
-        # Fallback: preserve component order if heuristic fails
-        if not ordered:
-            ordered = component_names
-
-        lines = ["flowchart LR", ""]
-
-        # Emit nodes
-        for name in ordered:
-            lines.append(f'{node_id(name)}["{name}"]')
-
-        lines.append("")
-
-        # Emit edges (linear pipeline)
-        for i in range(len(ordered) - 1):
-            lines.append(
-                f"{node_id(ordered[i])} --> {node_id(ordered[i + 1])}"
-            )
-
-        return "\n".join(lines)
-
-    # --------------------------------------------------
-    # 10. Fallback (no components)
-    # --------------------------------------------------
-    return diagram
-
+    return "\n".join(out) + "\n"

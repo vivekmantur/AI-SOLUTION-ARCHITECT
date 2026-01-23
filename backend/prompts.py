@@ -1,15 +1,11 @@
 import textwrap
-from typing import List, Tuple
 from .models import DesignRequest
 
 
-def build_design_prompt(
-    req: DesignRequest,
-    patterns: List[Tuple[str, str, float, str]],  # keep as-is (no change in calling code)
-) -> str:
+def build_7task_architecture_prompt(req: DesignRequest) -> str:
     """
-    Domain-agnostic, cloud-aware architecture prompt.
-    Output in STRICT NORMAL TEXT DRAFT (NOT JSON, NOT Markdown, NOT LaTeX)
+    7-task domain-agnostic architecture prompt.
+    Output in STRICT NORMAL TEXT (NOT JSON, NOT Markdown, NOT LaTeX)
     """
 
     prompt = f"""
@@ -21,59 +17,112 @@ User Requirements:
 {req.requirements}
 
 ====================================================================
-TASK 1 — NORMALIZE REQUIREMENTS
+TASK 1 — NORMALIZE REQUIREMENT (Structured Understanding)
 ====================================================================
-Convert the raw input into a structured, domain-agnostic form:
+Rewrite the requirement in a structured format showing what you understood.
+Keep it short but complete.
+Must include:
 - Business goal
-- Primary users / clients / devices
-- Interaction style (request-response, event-driven, real-time, batch)
-- Scale characteristics:
-  - traffic pattern
-  - concurrency
-  - growth expectation
-- Data characteristics:
-  - data types
-  - consistency needs
-  - latency sensitivity
-- Security and compliance needs
-- Deployment constraints
+- Primary users
+- Input systems / data sources
+- Expected outputs (dashboards, reports, APIs, apps, etc.)
+- Interaction style (batch, real-time, event-driven, request-response)
+- Data characteristics (volume, velocity, variety)
+- Quality and reliability expectations
+- Performance expectations
+- Security, privacy, or compliance needs (if implied)
+- Cost or operational constraints (if implied)
 
-Store this under section 1.
+Store this under Task 1 output.
 
 ====================================================================
-TASK 2 — INFER DOMAIN CAPABILITIES
+TASK 2 — SELECTED DOMAIN PLATFORM ARCHITECTURE (High Level)
 ====================================================================
-Infer system capabilities ONLY from the requirements.
-Do NOT assume a predefined domain.
-Capabilities must be expressed as concrete responsibilities.
+Identify the most relevant domain based on the requirement.
 
-Store this under section 2.
+Then provide a "Platform Architecture (High Level)" using numbered sections like:
+
+1) ...
+2) ...
+3) ...
+...
+N) Monitoring + Governance + Optimization
+
+Rules:
+- Each section must be concise (2–5 lines max)
+- Must cover full end-to-end flow
+- Must be domain-appropriate
+- The final section MUST cover monitoring, governance, and optimization
+
+Store this under Task 2 output.
 
 ====================================================================
-TASK 3 — CHOOSE PATTERN (STRICT)
+TASK 3 — ARCHITECTURE FLOW DIAGRAM (Text View)
 ====================================================================
-Do NOT use any external reference patterns.
-chosen_pattern MUST be empty string "".
+Provide ONLY a text-based flow diagram in this format:
 
-Store this under section 3.
+[Component / Layer]
+   | (optional short label)
+   v
+[Next Component / Layer]
+
+Rules:
+- No explanations here
+- Must represent Task 2 accurately
+- Must be fully connected from start to end
+- Keep it readable and compact
+
+Store this under Task 3 output.
 
 ====================================================================
-CRITICAL TWO-PHASE ARCHITECTURE RULE
+TASK 4 — BEST ARCHITECTURE RECOMMENDATION
 ====================================================================
+Recommend the best overall architecture approach for this requirement.
 
-PHASE 1 — COMPONENT FINALIZATION
-Finalize ALL components FIRST.
+Must include:
+- Architecture style or approach name
+- Why it fits the domain
+- How it balances correctness, scalability, resilience, and operational efficiency
+- Trade-offs if any
+
+Keep this to 4–7 lines.
+
+Store this under Task 4 output.
+
+====================================================================
+TASK 5 — KEY DESIGN DECISIONS (Domain-Driven)
+====================================================================
+Identify the MOST IMPORTANT design decision categories for this system
+based strictly on the requirement and selected domain.
+
+Rules:
+- Choose 3 to 5 categories dynamically
+- Each category must have a clear heading
+- Under each heading, provide 2–4 concise decision points
+- Categories MUST vary depending on the requirement/domain
+- Do NOT force generic categories if they are not relevant
+
+Store this under Task 5 output.
+
+====================================================================
+TASK 6 — COMPONENTS (Finalized List)
+====================================================================
+Finalize a complete list of architecture components needed.
 
 Allowed component types (ONLY):
-frontend
-api_gateway
-backend
+data_sources
+ingestion
+streaming
+processing
+storage
+warehouse
+semantic_layer
+api_backend
 auth
 messaging
-analytics
+bi_reporting
+governance
 monitoring
-db
-storage
 caching
 
 MANDATORY COMPONENT FIELD RULE:
@@ -87,33 +136,19 @@ If unknown → set "" (empty string). Never use null.
 
 STRICT RULES:
 - No placeholder services
-- No merged responsibilities
-- If async/event-driven → messaging REQUIRED
-- If APIs/users exist → authentication REQUIRED
+- No mixing clouds
+- Keep responsibilities separate (do not merge unrelated concerns)
+- Components must match Task 2 architecture
 
-Store this under section 4.
-
-PHASE 2 — CONNECTION FINALIZATION
-Every component MUST appear in at least one connection.
-No isolated components allowed.
+Store this under Task 6 output.
 
 ====================================================================
-TASK 4 — ARCHITECTURE DESCRIPTION
+TASK 7 — MERMAID DIAGRAM (MANDATORY)
 ====================================================================
-Explain:
-- Architecture style
-- Responsibility separation
-- Scalability & availability
-- Sync vs async flows
-- Consistency strategy
+Create a Mermaid diagram that connects ALL components from Task 6.
 
-Store this under section 5.
-
-====================================================================
-TASK 5 — MERMAID DIAGRAM (MANDATORY)
-====================================================================
 Rules:
-- MUST start with graph TD
+- MUST start with: graph TD
 - Allowed arrows ONLY:
   A --> B
   A -->|label| B
@@ -122,54 +157,14 @@ Rules:
 
 STRICT PROHIBITIONS:
 - NO ->>
-- NO external actors (User, Client)
+- NO external actors (User, Client, Analyst)
 - NO undeclared nodes
-- Node names MUST match component names EXACTLY
+- Node names MUST match component names EXACTLY from Task 6
 
 Diagram MUST be non-empty and connected.
 Every component MUST appear in at least one connection.
 
-Store this under section 6.
-
-====================================================================
-TASK 6 — NON-FUNCTIONAL CONSIDERATIONS
-====================================================================
-List NFRs:
-- scalability
-- availability
-- latency
-- security
-- observability
-- compliance
-
-Store this under section 7.
-
-====================================================================
-TASK 7 — TECH STACK
-====================================================================
-Store this under section 8.
-
-====================================================================
-TASK 8 — COST ESTIMATE
-====================================================================
-Provide:
-- total monthly cost estimate
-- dev / uat / prod cost breakdown
-- assumptions
-
-Store this under section 9.
-
-====================================================================
-TASK 9 — API & INFRASTRUCTURE STUBS
-====================================================================
-Provide:
-- api_spec_stub (basic endpoints + payload structure)
-- infra_as_code_stub (sample IaC skeleton)
-
-Store this under section 10 and 11.
-
-IMPORTANT:
-The section title MUST be exactly: 11) Infra as Code Stub
+Store this under Task 7 output.
 
 ====================================================================
 CLOUD AWARENESS & SERVICE SELECTION
@@ -181,104 +176,64 @@ OR
 - "" (empty string)
 
 DO NOT:
-- Invent services
 - Mix clouds
-- Assign infra tools (Docker, Terraform)
-- Assign SaaS products (Stripe, Snowflake)
+- Invent services
+- Assign infra tools (Docker, Terraform) as cloud_service
+- Assign SaaS products (Snowflake, Databricks) as cloud_service
 
 ====================================================================
-ABSOLUTE OUTPUT RULES (CRITICAL)
+ABSOLUTE OUTPUT RULES (STRICT)
 ====================================================================
+Return ONLY NORMAL TEXT.
+DO NOT output JSON.
+DO NOT output Markdown.
+DO NOT use markdown headings (#, ##).
+DO NOT use code blocks using ``` anywhere.
+DO NOT use tables.
 
-Return ONLY NORMAL TEXT DRAFT.
+Output MUST follow EXACTLY this template:
 
-ABSOLUTE PROHIBITIONS:
-- NO JSON output
-- NO markdown formatting
-- NO markdown headings (#, ##)
-- NO markdown tables (pipes like |)
-- NO code blocks using ``` anywhere
-- NO LaTeX (\\boxed, \\begin, \\end, aligned, equation, \\text)
-- NO bullet symbols like **bold**
-- NO separators like --- 
-
-You MUST output ALL sections from 1) to 12) in order.
-Do NOT stop early.
-If you run out of space, shorten the content but NEVER skip sections.
-
-Use EXACTLY this output template:
-
-1) Normalized Requirements
-business_goal: ...
-primary_users_clients_devices: ...
-interaction_style: ...
-scale_characteristics:
-  traffic_pattern: ...
-  concurrency: ...
-  growth_expectation: ...
-data_characteristics:
-  data_types: ...
-  consistency_needs: ...
-  latency_sensitivity: ...
-security_and_compliance_needs: ...
-deployment_constraints: ...
-
-2) Inferred Capabilities
-capability: ...
-capability: ...
-
-3) Chosen Pattern
-chosen_pattern: ...
-
-4) Components (Finalized List)
-component:
-name: ...
-type: ...
-cloud_service: ...
-description: ...
-
-component:
-name: ...
-type: ...
-cloud_service: ...
-description: ...
-
-5) Architecture Description
+TASK 1 — NORMALIZE REQUIREMENT
 ...
 
-6) Mermaid Diagram
+TASK 2 — SELECTED DOMAIN PLATFORM ARCHITECTURE (High Level)
+...
+
+TASK 3 — ARCHITECTURE FLOW DIAGRAM (Text View)
+...
+
+TASK 4 — BEST ARCHITECTURE RECOMMENDATION
+...
+
+TASK 5 — KEY DESIGN DECISIONS
+Category Name:
+- ...
+- ...
+
+Category Name:
+- ...
+- ...
+
+Category Name:
+- ...
+- ...
+
+TASK 6 — COMPONENTS (Finalized List)
+component:
+name: ...
+type: ...
+cloud_service: ...
+description: ...
+
+component:
+name: ...
+type: ...
+cloud_service: ...
+description: ...
+
+TASK 7 — MERMAID DIAGRAM
 graph TD
 A --> B
-
-7) Non-Functional Considerations
-nfr: ...
-nfr: ...
-
-8) Tech Stack
-tech: ...
-tech: ...
-
-9) Cost Estimate
-total_monthly_usd: ...
-dev_monthly_usd: ...
-uat_monthly_usd: ...
-prod_monthly_usd: ...
-assumptions: ...
-
-10) API Spec Stub
-...
-
-11) Infra as Code Stub
-...
-
-12) Notes
-...
-
-FINAL OUTPUT CONTRACT (STRICT)
-You MUST output EXACTLY 12 sections.
-The first characters of your output MUST be:
-
-1) Normalized Requirements
 
 Start now.
 """

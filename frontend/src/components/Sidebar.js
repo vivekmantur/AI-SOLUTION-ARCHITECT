@@ -12,7 +12,6 @@ import {
 import SettingsIcon from '@mui/icons-material/Settings';
 import CloudIcon from '@mui/icons-material/Cloud';
 import TuneIcon from '@mui/icons-material/Tune';
-import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 
 const Sidebar = ({ 
   cloud, 
@@ -129,48 +128,6 @@ const Sidebar = ({
         </FormControl>
       </Box>
 
-      {/* Health Check Button */}
-      <Button
-        fullWidth
-        variant="outlined"
-        startIcon={<HealthAndSafetyIcon />}
-        onClick={onHealthCheck}
-        sx={{
-          mb: 2,
-          py: 1.5,
-          borderColor: '#4a5568',
-          color: '#e2e8f0',
-          backgroundColor: '#2d3748',
-          textTransform: 'none',
-          fontWeight: 600,
-          '&:hover': {
-            borderColor: '#60a5fa',
-            backgroundColor: '#374151'
-          }
-        }}
-      >
-        🔍 Check Backend Health
-      </Button>
-
-      {/* Health Status Display */}
-      {healthStatus && (
-        <Alert 
-          severity={healthStatus.success ? "success" : "error"}
-          sx={{ 
-            mt: 2,
-            backgroundColor: healthStatus.success ? 'rgba(72, 187, 120, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-            color: healthStatus.success ? '#68d391' : '#f87171',
-            '& .MuiAlert-icon': {
-              color: healthStatus.success ? '#68d391' : '#f87171',
-            }
-          }}
-        >
-          {healthStatus.success 
-            ? `✅ Backend is Live: ${JSON.stringify(healthStatus.data)}`
-            : `❌ Backend unreachable: ${healthStatus.error}`
-          }
-        </Alert>
-      )}
     </Box>
   );
 };
