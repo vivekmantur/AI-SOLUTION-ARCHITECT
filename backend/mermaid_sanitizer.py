@@ -1,5 +1,6 @@
 import re
 from typing import List, Optional
+from collections import defaultdict
 from .models import ArchitectureComponent
 
 
@@ -29,7 +30,7 @@ def normalize_mermaid(
     # 2) Fix invalid Mermaid label terminator: |label|>
     diagram = diagram.replace("|>", "|")
 
-    # ✅ IMPORTANT: after fixing |>, it becomes || sometimes
+    # IMPORTANT: after fixing |>, it becomes || sometimes
     diagram = diagram.replace("||", "|")
 
     # 3) Normalize arrows
@@ -55,9 +56,6 @@ def normalize_mermaid(
 
     # 5) Extract edge lines
     edge_lines = [ln for ln in body if "-->" in ln or "-.->" in ln]
-
-    if not edge_lines:
-        return header + "\n"
 
     label_to_id = {}
 
@@ -105,34 +103,49 @@ def normalize_mermaid(
                 f'{left_id}["{left}"] {arrow} {right_id}["{right}"]'
             )
 
-    if not clean_edges:
-        return header + "\n"
-
-    # 6) Emit nodes (from components + from edges)
-    node_lines = []
+    # ---------------------------------------------------------
+    # 6) Emit nodes grouped by component.type (COLUMNS)
+    # ---------------------------------------------------------
+    layers = defaultdict(list)
 
     if components:
         for c in components:
             if not c.name:
                 continue
+            layer = c.type or "Other"
             nid = _to_node_id(c.name)
-            node_lines.append(f'{nid}["{c.name}"]')
+            layers[layer].append((nid, c.name))
             label_to_id[c.name] = nid
 
-    for label, nid in label_to_id.items():
-        node_lines.append(f'{nid}["{label}"]')
+    # Fallback: if no components, return linear diagram
+    if not layers:
+        out = [header, ""]
+        for label, nid in label_to_id.items():
+            out.append(f'{nid}["{label}"]')
+        out.append("")
+        out.extend(clean_edges)
+        return "\n".join(out) + "\n"
 
-    # remove duplicates
-    seen = set()
-    final_nodes = []
-    for n in node_lines:
-        if n not in seen:
-            final_nodes.append(n)
-            seen.add(n)
+    # Force horizontal layout
+    out = ["flowchart LR", ""]
 
-    out = [header, ""]
-    out.extend(final_nodes)
-    out.append("")
-    out.extend(clean_edges)
+    ordered_layers = list(layers.keys())
+
+    # Build subgraphs (columns)
+    for layer in ordered_layers:
+        safe_layer = f"layer_{_to_node_id(layer)}"
+
+        out.append(f'subgraph {safe_layer}["{layer}"]')
+        out.append("  direction TB")
+        for nid, label in layers[layer]:
+            out.append(f'  {nid}["{label}"]')
+        out.append("end\n")
+
+    # Connect columns horizontally (first node of each layer)
+    for i in range(len(ordered_layers) - 1):
+        left_nodes = layers[ordered_layers[i]]
+        right_nodes = layers[ordered_layers[i + 1]]
+        if left_nodes and right_nodes:
+            out.append(f"{left_nodes[0][0]} --> {right_nodes[0][0]}")
 
     return "\n".join(out) + "\n"
