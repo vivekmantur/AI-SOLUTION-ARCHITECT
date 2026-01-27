@@ -1,0 +1,14 @@
+# Environment variables / secrets
+.env
+*.env
+
+# Docker secrets
+docker-compose.override.yml
+
+# Node / Python / .NET (safe defaults)
+node_modules/
+bin/
+obj/
+.vscode/
+.idea/
+__pycache__/

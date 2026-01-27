@@ -17,7 +17,6 @@ services:
       REACT_APP_API_URL: ""
 
     volumes:
-      # Mount patterns directory for easy updates without rebuild
       - ./patterns:/app/patterns:ro
     restart: unless-stopped
     healthcheck:
