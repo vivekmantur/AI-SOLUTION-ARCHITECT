@@ -14,7 +14,7 @@ import ArchitectureIcon from '@mui/icons-material/Architecture';
 import Sidebar from './components/Sidebar';
 import RequirementsInput, { DEFAULT_REQUIREMENTS } from './components/RequirementsInput';
 import SolutionDisplay from './components/SolutionDisplay';
-import { healthCheck, generateDesign } from './services/api';
+import { generateDesign } from './services/api';
 import './App.css';
 
 const darkTheme = createTheme({
@@ -61,23 +61,17 @@ const DRAWER_WIDTH = 360;
 
 function App() {
   const [cloud, setCloud] = useState('azure');
-  const [detailLevel, setDetailLevel] = useState('high');
+
   const [requirements, setRequirements] = useState(DEFAULT_REQUIREMENTS);
   const [solution, setSolution] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [healthStatus, setHealthStatus] = useState(null);
-
-  const handleHealthCheck = async () => {
-    const result = await healthCheck();
-    setHealthStatus(result);
-  };
 
   const handleGenerate = async () => {
     setLoading(true);
     setSolution(null);
     
     try {
-      const result = await generateDesign(requirements, cloud, detailLevel);
+      const result = await generateDesign(requirements, cloud);
       
       if (result.success) {
         setSolution(result.data.solution);
@@ -153,10 +147,6 @@ function App() {
           <Sidebar 
             cloud={cloud}
             setCloud={setCloud}
-            detailLevel={detailLevel}
-            setDetailLevel={setDetailLevel}
-            onHealthCheck={handleHealthCheck}
-            healthStatus={healthStatus}
           />
         </Drawer>
 

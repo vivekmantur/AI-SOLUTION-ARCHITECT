@@ -179,8 +179,7 @@ Content-Type: application/json
 
 {
   "requirements": "Your business/technical requirements",
-  "cloud": "azure|aws|gcp",
-  "detail_level": "high|medium|low"
+  "cloud": "azure|aws|gcp"
 }
 ```
 
@@ -208,8 +207,7 @@ FastAPI provides automatic interactive documentation:
 
 1. **Configuration Sidebar**
    - Cloud provider selection (Azure/AWS/GCP)
-   - Detail level adjustment
-   - Backend health status indicator
+
 
 2. **Requirements Input**
    - Large text area for requirements entry

@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 class DesignRequest(BaseModel):
     requirements: str = Field(..., description="Raw business/technical requirement in natural language")
     cloud: str = Field("azure", description="Target cloud: azure|aws|gcp")
-    detail_level: str = Field("high", description="Level of detail: high|medium|low")
+
 
 
 class ArchitectureComponent(BaseModel):

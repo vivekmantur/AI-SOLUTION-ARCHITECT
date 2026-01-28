@@ -109,21 +109,37 @@ TASK 6 — COMPONENTS (Finalized List)
 ====================================================================
 Finalize a complete list of architecture components needed.
 
-Allowed component types (ONLY):
-data_sources
-ingestion
-streaming
-processing
-storage
-warehouse
-semantic_layer
-api_backend
-auth
-messaging
-bi_reporting
-governance
-monitoring
-caching
+Component type rules:
+- Component "type" MUST be a lowercase snake_case identifier
+- Type MUST describe the component’s primary responsibility
+- Types MUST be domain-appropriate and requirement-driven
+
+Examples (not exhaustive):
+- data_sources
+- ingestion
+- streaming
+- processing
+- batch_processing
+- real_time_processing
+- storage
+- warehouse
+- lakehouse
+- semantic_layer
+- api_backend
+- backend_service
+- frontend
+- auth
+- messaging
+- event_router
+- event_processing
+- bi_reporting
+- ml_training
+- ml_inference
+- caching
+- monitoring
+- governance
+- security
+- orchestration
 
 MANDATORY COMPONENT FIELD RULE:
 Every component MUST include:
@@ -135,12 +151,14 @@ Every component MUST include:
 If unknown → set "" (empty string). Never use null.
 
 STRICT RULES:
-- No placeholder services
-- No mixing clouds
-- Keep responsibilities separate (do not merge unrelated concerns)
-- Components must match Task 2 architecture
+- No placeholder components
+- No mixing cloud providers
+- Do NOT merge unrelated responsibilities into one component
+- Components MUST align with Task 2 architecture flow
+- Components MUST be granular enough to be diagrammed clearly
 
 Store this under Task 6 output.
+
 
 ====================================================================
 TASK 7 — MERMAID DIAGRAM (MANDATORY)

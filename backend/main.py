@@ -7,12 +7,9 @@ import json
 import re
 from pathlib import Path
 
-from .validators import (
-    validate_diagram_matches_components,
-    extract_diagram_components,
-    validate_domain_isolation,
-)
-
+# -----------------------------
+# Pydantic models
+# -----------------------------
 from .models import (
     DesignRequest,
     DesignResponse,
@@ -20,18 +17,24 @@ from .models import (
     ArchitectureComponent,
 )
 
-
+# -----------------------------
+# LLM output parsing utilities
+# -----------------------------
 from .Text_Json_Extraction import (
-     _clean_line,
-     _strip_log_prefix,
-     parse_olmo_output_to_tasks,
-     _normalize_component_key,
-     
-)
-from .mermaid_sanitizer import (
-    normalize_mermaid,
+    _clean_line,
+    _strip_log_prefix,
+    parse_olmo_output_to_tasks,
+    _normalize_component_key,
 )
 
+# -----------------------------
+# Mermaid sanitization
+# -----------------------------
+from .mermaid_sanitizer import normalize_mermaid
+
+# -----------------------------
+# Supporting modules
+# -----------------------------
 from .patterns_store import pattern_store
 from .prompts import build_7task_architecture_prompt
 from .json_schema_prompt import build_json_prompt
@@ -40,7 +43,7 @@ from .report_generator import generate_pdf_report
 
 
 # ------------------------------------------------------------
-# Azure Icon Mapping
+# Azure Icon Mapping (used by frontend)
 # ------------------------------------------------------------
 AZURE_ICON_MAP = {
     "Azure App Service": "compute/App_Service.png",
@@ -62,24 +65,24 @@ AZURE_ICON_MAP = {
 }
 
 
+# ------------------------------------------------------------
+# FastAPI app initialization
+# ------------------------------------------------------------
 app = FastAPI(title="AI Solution Architect API")
 
 # ------------------------------------------------------------
-# CORS
+# CORS configuration
 # ------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],           # Open for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ------------------------------------------------------------
-# Azure Icons (SVG)
-# ------------------------------------------------------------
-# ------------------------------------------------------------
-# Azure Icons (SVG)
+# Azure Icons static mount
 # ------------------------------------------------------------
 AZURE_ICONS_DIR = (
     Path(__file__).parent.parent / "frontend" / "build" / "azure-icons"
@@ -93,8 +96,9 @@ app.mount(
     StaticFiles(directory=str(AZURE_ICONS_DIR)),
     name="azure-icons",
 )
+
 # ------------------------------------------------------------
-# AWS Icons
+# AWS Icons static mount
 # ------------------------------------------------------------
 AWS_ICONS_DIR = (
     Path(__file__).parent.parent / "frontend" / "build" / "aws-icons"
@@ -111,7 +115,7 @@ if AWS_ICONS_DIR.exists():
     )
 
 # ------------------------------------------------------------
-# GCP Icons
+# GCP Icons static mount
 # ------------------------------------------------------------
 GCP_ICONS_DIR = (
     Path(__file__).parent.parent / "frontend" / "build" / "gcp-icons"
@@ -128,7 +132,7 @@ if GCP_ICONS_DIR.exists():
     )
 
 # ------------------------------------------------------------
-# Frontend build
+# React frontend build
 # ------------------------------------------------------------
 FRONTEND_BUILD_DIR = Path(__file__).parent.parent / "frontend" / "build"
 
@@ -138,65 +142,86 @@ if FRONTEND_BUILD_DIR.exists():
         StaticFiles(directory=str(FRONTEND_BUILD_DIR / "static")),
         name="static",
     )
-    
-    
 
+
+# ------------------------------------------------------------
+# Utility: Clean raw LLM output
+# ------------------------------------------------------------
 def clean_olmo_text(text: str) -> str:
+    """
+    Cleans raw LLM output by removing markdown blocks,
+    LaTeX artifacts, and formatting noise while preserving
+    Mermaid diagram syntax.
+    """
+
+    # Remove fenced code blocks
     text = re.sub(r"```[\s\S]*?```", "", text)
 
-    # ❌ DON'T remove lines starting with "|" (Mermaid uses |label|)
-    # text = "\n".join([line for line in text.splitlines() if not line.strip().startswith("|")])
-
+    # Remove common markdown artifacts
     text = text.replace("---", "")
     text = text.replace("**", "")
 
-    # Convert common latex wrappers into plain text
+    # Normalize LaTeX wrappers
     text = text.replace("\\boxed{", "")
     text = text.replace("\\begin{aligned}", "")
     text = text.replace("\\end{aligned}", "")
     text = text.replace("\\\\", "\n")
 
+    # Convert \text{} blocks into plain text
     text = re.sub(r"\\text\{([^}]*)\}", r"\1", text)
+
+    # Remove leftover braces
     text = text.replace("{", "").replace("}", "")
 
     return text.strip()
 
 
-
 # ------------------------------------------------------------
-# API
+# Main API endpoint
 # ------------------------------------------------------------
 @app.post("/design", response_model=DesignResponse)
 def generate_design(req: DesignRequest):
+    """
+    Generates a complete cloud architecture design using LLM output.
+    """
+
     try:
+        # Retrieve similar architecture patterns
         patterns = pattern_store.query(req.requirements, top_k=1) or []
         print("patterns\n", patterns)
 
+        # Build structured prompt
         prompt = build_7task_architecture_prompt(req)
 
+        # Call LLM
         raw_olmo = call_llm(prompt).strip()
+
+        # Clean model output
         raw_olmo = clean_olmo_text(raw_olmo)
         print("RAW came from OLMo3\n", raw_olmo)
 
         if not raw_olmo:
             raise HTTPException(status_code=500, detail="LLM returned empty output")
 
-        # Task-based parser output
+        # Parse task-based response
         solution_json = parse_olmo_output_to_tasks(raw_olmo)
 
-        # Task 6 components
+        # Extract Task 6 components
         components = [
             ArchitectureComponent(**c)
             for c in solution_json.get("task_6_components", [])
         ]
         print("components are \n", components)
 
-        # Task 7 mermaid
+        # Extract Task 7 Mermaid diagram
         raw_diagram = solution_json.get("task_7_mermaid_diagram", "")
-        print("diagram before fixing mermaid node names\n",raw_diagram)
-        print("raw diagram after fixing mermaid node names and before normalizing mermaid \n",raw_diagram)
+        print("diagram before fixing mermaid node names\n", raw_diagram)
+
+        # Normalize Mermaid syntax
         diagram = normalize_mermaid(raw_diagram, components)
-        print("diagram after sanitization\n",diagram)
+        print("diagram after sanitization\n", diagram)
+
+        # Build solution model
         solution = SolutionDesign(
             task_1_normalize_requirement=solution_json.get("task_1_normalize_requirement", {}),
             task_2_platform_architecture_high_level=solution_json.get("task_2_platform_architecture_high_level", ""),
@@ -212,8 +237,16 @@ def generate_design(req: DesignRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-#mermaid syntax fixer
+
+# ------------------------------------------------------------
+# Mermaid node-name fixer (currently unused)
+# ------------------------------------------------------------
 def fix_mermaid_node_names(diagram: str) -> str:
+    """
+    Fixes invalid Mermaid node names and edge labels
+    to prevent rendering errors.
+    """
+
     if not diagram:
         return diagram
 
@@ -226,17 +259,17 @@ def fix_mermaid_node_names(diagram: str) -> str:
         if not line:
             continue
 
-        # keep graph direction line
+        # Preserve graph direction
         if line.startswith(("graph", "flowchart")):
             fixed_lines.append(line)
             continue
 
-        # if already has node syntax, keep as-is
+        # Keep existing node syntax
         if re.search(r"\w+\s*[\[\(\{]", line):
             fixed_lines.append(raw.strip())
             continue
 
-        # match edges: A --> B OR A -->|label| B OR A -->|label|> B
+        # Parse Mermaid edges
         m = re.match(r"^(.+?)\s*-->\s*(.+)$", line)
         if not m:
             fixed_lines.append(raw.strip())
@@ -245,16 +278,17 @@ def fix_mermaid_node_names(diagram: str) -> str:
         left = m.group(1).strip()
         right = m.group(2).strip()
 
-        # ✅ FIX invalid Mermaid label terminator
+        # Fix invalid label terminator
         right = right.replace("|>", "|")
 
-        # handle label syntax: A -->|text| B
+        # Extract edge labels
         label_match = re.match(r"^\|(.+?)\|\s*(.+)$", right)
         label = None
         if label_match:
             label = label_match.group(1).strip()
             right = label_match.group(2).strip()
 
+        # Normalize IDs
         def to_id(name: str) -> str:
             return re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
 
@@ -269,14 +303,18 @@ def fix_mermaid_node_names(diagram: str) -> str:
     return "\n".join(fixed_lines)
 
 
+# ------------------------------------------------------------
+# Catch-all route for React SPA
+# ------------------------------------------------------------
 @app.get("/{full_path:path}")
 def serve_react_app(full_path: str):
-    # Do NOT intercept static or API routes
-    if full_path.startswith(("azure-icons", "aws-icons", "gcp-icons", "static", "design")):
-      raise HTTPException(status_code=404)
+    """
+    Serves React index.html for all non-API routes.
+    """
 
+    # Avoid intercepting API and static routes
+    if full_path.startswith(("azure-icons", "aws-icons", "gcp-icons", "static", "design")):
+        raise HTTPException(status_code=404)
 
     index = FRONTEND_BUILD_DIR / "index.html"
     return FileResponse(index)
-
-
