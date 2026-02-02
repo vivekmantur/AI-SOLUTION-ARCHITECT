@@ -17,3 +17,5 @@ uvicorn[standard]
 pydantic
 python-multipart
 groq
+svglib>=1.5.1
+cairosvg>=2.7.0

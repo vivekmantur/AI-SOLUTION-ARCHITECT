@@ -2,7 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
+from fastapi.responses import StreamingResponse
+from .pdf_report import generate_pdf_report
 import json
 import re
 from pathlib import Path
@@ -37,9 +38,7 @@ from .mermaid_sanitizer import normalize_mermaid
 # -----------------------------
 from .patterns_store import pattern_store
 from .prompts import build_7task_architecture_prompt
-from .json_schema_prompt import build_json_prompt
 from .llm_client import call_llm
-from .report_generator import generate_pdf_report
 
 
 # ------------------------------------------------------------
@@ -187,8 +186,8 @@ def generate_design(req: DesignRequest):
 
     try:
         # Retrieve similar architecture patterns
-        patterns = pattern_store.query(req.requirements, top_k=1) or []
-        print("patterns\n", patterns)
+        # patterns = pattern_store.query(req.requirements, top_k=1) or []
+        # print("patterns\n", patterns)
 
         # Build structured prompt
         prompt = build_7task_architecture_prompt(req)
@@ -301,6 +300,18 @@ def fix_mermaid_node_names(diagram: str) -> str:
             fixed_lines.append(f'{left_id}["{left}"] --> {right_id}["{right}"]')
 
     return "\n".join(fixed_lines)
+
+@app.post("/download-report")
+def download_report(solution: SolutionDesign):
+    pdf_buffer = generate_pdf_report(solution)
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=architecture-report.pdf"
+        }
+    )
 
 
 # ------------------------------------------------------------

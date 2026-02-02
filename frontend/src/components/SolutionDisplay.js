@@ -29,6 +29,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
 const AZURE_ICON_BASE = "/azure-icons";
 
+
+
 const normalize = (s) =>
   s
     ?.toLowerCase()
@@ -311,6 +313,37 @@ const SolutionDisplay = ({ solution }) => {
 
   const [activeSection, setActiveSection] = useState(SECTIONS.TASK1);
 
+const handleDownloadPdf = async () => {
+  try {
+    const response = await fetch("/download-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(solution),
+    });
+
+    if (!response.ok) {
+      throw new Error("PDF generation failed");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "architecture-report.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("PDF download error:", err);
+    alert("Failed to download PDF report");
+  }
+};
+
+
+
   useEffect(() => {
    mermaid.initialize({
   startOnLoad: false,
@@ -490,6 +523,16 @@ ${enrichMermaidWithIcons(diagramSource, solution?.task_6_components || [])}
           >
             CLOUD DIAGRAM
           </Button>
+         <Button
+        variant="contained"
+        startIcon={<NotesIcon />}
+        onClick={handleDownloadPdf}
+        disabled={!solution}
+      >
+        Download PDF Report
+      </Button>
+
+
         </Box>
       </Paper>
 

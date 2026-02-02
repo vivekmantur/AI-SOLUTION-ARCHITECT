@@ -29,10 +29,16 @@ WORKDIR /app
 # Install essential system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libopenblas-dev \
-    libglib2.0-0 \
     gcc \
+    libglib2.0-0 \
+    libcairo2 \
+    libcairo2-dev \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-xlib-2.0-0 \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Upgrade pip, setuptools, wheel, and regex
 RUN pip install --upgrade pip setuptools wheel regex --no-cache-dir

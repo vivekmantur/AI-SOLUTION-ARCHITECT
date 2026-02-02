@@ -71,6 +71,8 @@ Rules:
 - Must represent Task 2 accurately
 - Must be fully connected from start to end
 - Keep it readable and compact
+- TASK 3 must describe ONLY the primary end-to-end data flow.
+- Do NOT include security, governance, monitoring, cataloging, or side dependencies.
 
 Store this under Task 3 output.
 
